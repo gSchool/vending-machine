@@ -36,6 +36,11 @@ export class VendingMachine {
     }
   }
 
+  returnCoins(): void {
+    this.returnedCoins.push(...makeChange(this.balance));
+    this.balance = 0;
+  }
+
   /** Coins made available in the coin return (change and rejected coins). */
   coinReturn(): Coin[] {
     return this.returnedCoins;
