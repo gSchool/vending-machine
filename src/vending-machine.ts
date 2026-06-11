@@ -21,8 +21,9 @@ export class VendingMachine {
     const value = valueOf(coin);
     if (value !== null) {
       this.balance += value;
+    } else {
+      this.returnedCoins.push(coin);
     }
-    // unrecognized coins are ignored (placed in the coin return)
   }
 
   selectProduct(product: Product): void {

@@ -31,6 +31,14 @@ describe("VendingMachine", () => {
     expect(machine.display()).toBe("INSERT COIN");
   });
 
+  it("places a rejected coin in the coin return immediately", () => {
+    const machine = new VendingMachine();
+
+    machine.insertCoin(PENNY);
+
+    expect(machine.coinReturn()).toEqual([PENNY]);
+  });
+
   it("displays the coin's value after a valid coin is inserted", () => {
     const machine = new VendingMachine();
 
