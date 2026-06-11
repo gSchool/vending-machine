@@ -8,6 +8,12 @@ export class VendingMachine {
   private pendingMessage: string | null = null;
   private returnedCoins: Coin[] = [];
 
+  /**
+   * Inventory maps a product to its remaining stock. A product absent from the
+   * map is treated as in stock; only an explicit count of 0 is sold out.
+   */
+  constructor(private inventory: Map<Product, number> = new Map()) {}
+
   display(): string {
     if (this.pendingMessage !== null) {
       const message = this.pendingMessage;
@@ -27,13 +33,25 @@ export class VendingMachine {
   }
 
   selectProduct(product: Product): void {
+    if (this.inventory.get(product) === 0) {
+      this.pendingMessage = "SOLD OUT";
+      return;
+    }
     if (this.balance < product.priceCents) {
       this.pendingMessage = `PRICE ${this.formatCurrency(product.priceCents)}`;
     } else {
       const changeOwed = this.balance - product.priceCents;
       this.balance = 0;
       this.returnedCoins.push(...makeChange(changeOwed));
+      this.decrementStock(product);
       this.pendingMessage = "THANK YOU";
+    }
+  }
+
+  private decrementStock(product: Product): void {
+    const count = this.inventory.get(product);
+    if (count !== undefined) {
+      this.inventory.set(product, count - 1);
     }
   }
 
