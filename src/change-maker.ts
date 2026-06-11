@@ -1,5 +1,6 @@
 import type { Coin } from "./coin";
 import { QUARTER, DIME, NICKEL } from "./coin";
+import { valueOf } from "./coin-classifier";
 
 /** Denominations the machine dispenses, largest first for greedy change. */
 const DENOMINATIONS: { coin: Coin; value: number }[] = [
@@ -24,4 +25,41 @@ export function makeChange(cents: number): Coin[] {
     }
   }
   return coins;
+}
+
+/** Tallies how many of each denomination value a reserve of coins holds. */
+function tally(reserve: Coin[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const coin of reserve) {
+    const value = valueOf(coin);
+    if (value !== null) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/**
+ * Whether a finite reserve of coins can produce exactly `cents`. Tries every
+ * feasible count of each denomination (largest first), since a plain greedy
+ * pass can fail when a larger coin is available but a smaller-coin solution is
+ * required. The search space is tiny (three denominations), so this is cheap.
+ */
+export function canMakeAmount(reserve: Coin[], cents: number): boolean {
+  const counts = tally(reserve);
+  const values = DENOMINATIONS.map((d) => d.value); // [25, 10, 5]
+
+  const solve = (remaining: number, index: number): boolean => {
+    if (remaining === 0) return true;
+    if (index >= values.length) return false;
+    const value = values[index]!;
+    const available = counts.get(value) ?? 0;
+    const maxUsable = Math.min(available, Math.floor(remaining / value));
+    for (let used = maxUsable; used >= 0; used--) {
+      if (solve(remaining - used * value, index + 1)) return true;
+    }
+    return false;
+  };
+
+  return solve(cents, 0);
 }

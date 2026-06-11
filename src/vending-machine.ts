@@ -1,8 +1,12 @@
 import type { Coin } from "./coin";
 import type { Product } from "./product";
 import { NICKEL, DIME, QUARTER } from "./coin";
+import { COLA, CHIPS, CANDY } from "./product";
 import { valueOf } from "./coin-classifier";
-import { makeChange } from "./change-maker";
+import { makeChange, canMakeAmount } from "./change-maker";
+
+/** The highest product price (cents); change may be owed up to just under this. */
+const MAX_PRICE_CENTS = Math.max(COLA.priceCents, CHIPS.priceCents, CANDY.priceCents);
 
 /**
  * A default change reserve with plenty of every denomination, so a machine
@@ -40,8 +44,18 @@ export class VendingMachine {
     return this.canMakeChange() ? "INSERT COIN" : "EXACT CHANGE ONLY";
   }
 
+  /**
+   * Safe rule: the reserve must be able to produce every change amount that
+   * could ever be owed — i.e. each 5-cent step from 5 up to the largest price.
+   * If any is unmakeable, the machine warns EXACT CHANGE ONLY.
+   */
   private canMakeChange(): boolean {
-    return this.changeReserve.length > 0;
+    for (let amount = 5; amount < MAX_PRICE_CENTS; amount += 5) {
+      if (!canMakeAmount(this.changeReserve, amount)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   insertCoin(coin: Coin): void {
