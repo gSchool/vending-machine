@@ -1,10 +1,17 @@
 import type { Coin } from "./coin";
+import type { Product } from "./product";
 import { valueOf } from "./coin-classifier";
 
 export class VendingMachine {
   private balance: number = 0;
+  private pendingMessage: string | null = null;
 
   display(): string {
+    if (this.pendingMessage !== null) {
+      const message = this.pendingMessage;
+      this.pendingMessage = null;
+      return message;
+    }
     return this.balance > 0 ? this.formatCurrency(this.balance) : "INSERT COIN";
   }
 
@@ -14,6 +21,15 @@ export class VendingMachine {
       this.balance += value;
     }
     // unrecognized coins are ignored (placed in the coin return)
+  }
+
+  selectProduct(product: Product): void {
+    if (this.balance < product.priceCents) {
+      this.pendingMessage = `PRICE ${this.formatCurrency(product.priceCents)}`;
+    } else {
+      this.balance = 0;
+      this.pendingMessage = "THANK YOU";
+    }
   }
 
   /** Converts a balance in cents into US dollar notation, e.g. 5 -> "$0.05". */
