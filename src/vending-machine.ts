@@ -3,7 +3,7 @@ import type { Product } from "./product";
 import { NICKEL, DIME, QUARTER } from "./coin";
 import { COLA, CHIPS, CANDY } from "./product";
 import { valueOf } from "./coin-classifier";
-import { makeChange, canMakeAmount } from "./change-maker";
+import { CoinBank } from "./coin-bank";
 
 /** The highest product price (cents); change may be owed up to just under this. */
 const MAX_PRICE_CENTS = Math.max(COLA.priceCents, CHIPS.priceCents, CANDY.priceCents);
@@ -22,15 +22,19 @@ export class VendingMachine {
   private balance: number = 0;
   private pendingMessage: string | null = null;
   private returnedCoins: Coin[] = [];
+  private bank: CoinBank;
 
   /**
    * Inventory maps a product to its remaining stock. A product absent from the
    * map is treated as in stock; only an explicit count of 0 is sold out.
+   * The change reserve seeds the machine's coin bank.
    */
   constructor(
     private inventory: Map<Product, number> = new Map(),
-    private changeReserve: Coin[] = AMPLE_CHANGE_RESERVE,
-  ) {}
+    changeReserve: Coin[] = AMPLE_CHANGE_RESERVE,
+  ) {
+    this.bank = CoinBank.fromCoins(changeReserve);
+  }
 
   display(): string {
     if (this.pendingMessage !== null) {
@@ -51,7 +55,7 @@ export class VendingMachine {
    */
   private canMakeChange(): boolean {
     for (let amount = 5; amount < MAX_PRICE_CENTS; amount += 5) {
-      if (!canMakeAmount(this.changeReserve, amount)) {
+      if (!this.bank.canMake(amount)) {
         return false;
       }
     }
@@ -62,6 +66,7 @@ export class VendingMachine {
     const value = valueOf(coin);
     if (value !== null) {
       this.balance += value;
+      this.bank.add(coin);
     } else {
       this.returnedCoins.push(coin);
     }
@@ -74,13 +79,31 @@ export class VendingMachine {
     }
     if (this.balance < product.priceCents) {
       this.pendingMessage = `PRICE ${this.formatCurrency(product.priceCents)}`;
-    } else {
-      const changeOwed = this.balance - product.priceCents;
-      this.balance = 0;
-      this.returnedCoins.push(...makeChange(changeOwed));
-      this.decrementStock(product);
-      this.pendingMessage = "THANK YOU";
+      return;
     }
+
+    const changeOwed = this.balance - product.priceCents;
+    if (!this.bank.canMake(changeOwed)) {
+      // Cannot make change: refuse the sale and return the customer's money.
+      this.refundBalance();
+      this.pendingMessage = "EXACT CHANGE ONLY";
+      return;
+    }
+
+    this.returnedCoins.push(...this.bank.withdraw(changeOwed));
+    this.balance = 0;
+    this.decrementStock(product);
+    this.pendingMessage = "THANK YOU";
+  }
+
+  /**
+   * Returns the customer's inserted balance to the coin return. The inserted
+   * coins are already in the bank, so we withdraw that exact amount back out —
+   * conserving the bank's contents.
+   */
+  private refundBalance(): void {
+    this.returnedCoins.push(...this.bank.withdraw(this.balance));
+    this.balance = 0;
   }
 
   private decrementStock(product: Product): void {
@@ -91,8 +114,7 @@ export class VendingMachine {
   }
 
   returnCoins(): void {
-    this.returnedCoins.push(...makeChange(this.balance));
-    this.balance = 0;
+    this.refundBalance();
   }
 
   /** Coins made available in the coin return (change and rejected coins). */
