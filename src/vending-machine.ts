@@ -1,10 +1,12 @@
 import type { Coin } from "./coin";
 import type { Product } from "./product";
 import { valueOf } from "./coin-classifier";
+import { makeChange } from "./change-maker";
 
 export class VendingMachine {
   private balance: number = 0;
   private pendingMessage: string | null = null;
+  private returnedCoins: Coin[] = [];
 
   display(): string {
     if (this.pendingMessage !== null) {
@@ -27,9 +29,16 @@ export class VendingMachine {
     if (this.balance < product.priceCents) {
       this.pendingMessage = `PRICE ${this.formatCurrency(product.priceCents)}`;
     } else {
+      const changeOwed = this.balance - product.priceCents;
       this.balance = 0;
+      this.returnedCoins.push(...makeChange(changeOwed));
       this.pendingMessage = "THANK YOU";
     }
+  }
+
+  /** Coins made available in the coin return (change and rejected coins). */
+  coinReturn(): Coin[] {
+    return this.returnedCoins;
   }
 
   /** Converts a balance in cents into US dollar notation, e.g. 5 -> "$0.05". */
