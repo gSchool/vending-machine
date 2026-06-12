@@ -152,13 +152,6 @@ None of these are required by the kata; they are the real path to deployment.
    greedy pass collects the obvious surplus; an operator who wants every last
    collectable cent is the only one affected.
 
-   > *Resolved:* an earlier draft listed `withdraw` here as "greedy and can
-   > strand future change." That was wrong. `withdraw`/`selectFor` already
-   > spends largest-coins-first via backtracking, which *is* the
-   > preserve-small-denominations optimum, and `withdraw-optimal.test.ts` proves
-   > it against a brute-force oracle. Only `collect` (a different objective —
-   > maximize value removed) remains non-optimal.
-
 2. **No atomicity / concurrency model.** `selectProduct` does read-modify-write
    on balance, bank, and inventory. If driven by concurrent hardware threads
    (coin sensor, button, display), these sequences need to be made atomic. The
