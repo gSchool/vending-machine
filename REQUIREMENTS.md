@@ -452,3 +452,211 @@ coin is invalid and is returned (§1.3).
 
 A penny and any other token (foreign coin not matching the above, blank slug,
 etc.) is invalid.
+
+---
+
+# Operator Interface
+
+Everything above describes the **customer** — the person buying a product.
+This section describes the **operator** — the person who services the machine:
+restocking products, loading change, collecting revenue, and auditing the
+machine's state. The operator is a distinct actor with privileged access
+(a key, a service panel); operator actions are not exposed to the customer.
+
+## Operator domain glossary
+
+- **Operator** — the privileged actor who services the machine. Distinct from
+  the customer; the operator's actions are not part of the customer interface
+  (§§1–8) and are not available through it.
+- **Revenue** — the value the machine has taken in from completed sales. It is
+  the cash the operator is entitled to collect.
+- **Change float** — the coins the machine retains so it can keep making change.
+  The float is not a fixed configured amount; it is whatever the machine must
+  keep on hand to stay *change-capable* (see §7: able to make every 5¢ increment
+  from 5¢ up to, but not including, the highest product price). A machine that
+  is change-capable does not show `EXACT CHANGE ONLY` at rest.
+- **Surplus** — coins the machine holds beyond a smallest-value set that keeps
+  it change-capable. The surplus is what `collect` removes.
+- **At rest** — balance is zero and no customer transaction is in progress
+  (§ resting state). Operator actions are permitted only at rest.
+
+> **Servicing actions are permitted only at rest.** Because the customer's
+> inserted coins live in the same pool the operator services, a *mutating*
+> operator action (restock, load change, collect) attempted while a customer has
+> a balance pending is **refused** with no effect, so servicing can never disturb
+> an in-progress sale (see O.0). Audit (§O.4) is read-only and is always
+> permitted, including mid-transaction.
+
+---
+
+## O.0 Servicing requires an idle machine
+
+### EARS
+
+O.0.1. IF a mutating operator action (restock, load change, or collect) is
+attempted while the customer balance is greater than zero, THEN the machine
+SHALL refuse the action, leaving stock, change, revenue, and balance unchanged.
+
+O.0.2. Audit (§O.4) is exempt: a read SHALL be permitted regardless of the
+customer balance, since it has no side effect and cannot disturb a sale.
+
+### Acceptance criteria
+
+```gherkin
+Feature: Operator actions require an idle machine
+
+  Scenario: Servicing is refused while a customer has money in
+    Given a machine with a quarter inserted
+    When the operator attempts to collect coins
+    Then the action is refused
+    And the balance is still "$0.25"
+    And the change on hand is unchanged
+```
+
+---
+
+## O.1 Restock products
+
+### EARS
+
+O.1.1. WHEN the operator restocks a product to a given count while at rest, the
+machine SHALL set that product's remaining stock to the given count.
+
+O.1.2. WHEN a product previously at zero stock is restocked to a positive count,
+the machine SHALL once again dispense that product on a valid purchase
+(§2.1), and SHALL no longer show `SOLD OUT` for it (§5.1).
+
+> Restock **sets** the count rather than adding to it, so the operator states the
+> shelf's true contents after refilling. Setting a count of zero is permitted and
+> marks the product sold out.
+
+### Acceptance criteria
+
+```gherkin
+Feature: Restock products
+
+  Scenario: Restocking a sold-out product makes it available again
+    Given a machine where cola has zero remaining stock
+    And the machine can make change
+    When the operator restocks cola to 5
+    And $1.00 is inserted
+    And cola is selected
+    Then cola is dispensed
+    And the display shows "THANK YOU"
+
+  Scenario: Restock sets, not adds
+    Given a machine where chips has 2 remaining
+    When the operator restocks chips to 10
+    Then chips has 10 remaining
+```
+
+---
+
+## O.2 Load change
+
+### EARS
+
+O.2.1. WHEN the operator loads coins into the machine while at rest, the machine
+SHALL add those coins to the available change.
+
+O.2.2. WHEN loading change makes the machine change-capable (§7), the machine
+SHALL stop displaying `EXACT CHANGE ONLY` at rest and resume `INSERT COIN`.
+
+O.2.3. Loaded coins SHALL be conserved exactly like inserted coins: they
+increase the available change by their full value and are never created or
+destroyed (§3.2).
+
+> Loading change is the operator's remedy for `EXACT CHANGE ONLY`. Loaded coins
+> are not revenue and are not, by themselves, collectable — they become part of
+> the float or the surplus per §O.3.
+
+### Acceptance criteria
+
+```gherkin
+Feature: Load change
+
+  Scenario: Loading change clears the exact-change warning
+    Given a machine holding no change
+    And no coins inserted
+    When the operator loads enough coins to make every increment
+    And the display is read
+    Then it shows "INSERT COIN"
+```
+
+---
+
+## O.3 Collect coins
+
+### EARS
+
+O.3.1. WHEN the operator collects coins while at rest, the machine SHALL hand
+back the **surplus** — the coins it holds beyond a smallest-value set that keeps
+it change-capable (§7) — and SHALL retain that change-capable set.
+
+O.3.2. After a collect, the machine SHALL remain change-capable whenever it was
+change-capable beforehand: collecting SHALL NOT cause it to display
+`EXACT CHANGE ONLY` at rest if it did not already.
+
+O.3.3. IF the machine is not change-capable when collect is performed (it is
+already showing `EXACT CHANGE ONLY` at rest), THEN the machine SHALL collect
+nothing, retaining all coins, since there is no surplus over a change-capable
+float.
+
+O.3.4. Collecting SHALL conserve money: the value handed to the operator equals
+the value the machine held minus the value retained as float (§3.2).
+
+> "Smallest-value set that keeps it change-capable" defines the retained float
+> observably: collect removes as much value as it can without pushing the machine
+> into `EXACT CHANGE ONLY`. The retained float is not operator-chosen; it is
+> whatever §7 requires.
+
+### Acceptance criteria
+
+```gherkin
+Feature: Collect coins
+
+  Scenario: Collecting leaves the machine able to make change
+    Given a machine that can make every increment with coins to spare
+    And no coins inserted
+    When the operator collects coins
+    Then the operator receives the surplus coins
+    And the display still shows "INSERT COIN"
+
+  Scenario: Collecting from a machine that cannot make change takes nothing
+    Given a machine that cannot make every increment
+    And no coins inserted
+    When the operator collects coins
+    Then no coins are handed to the operator
+    And the display still shows "EXACT CHANGE ONLY"
+```
+
+---
+
+## O.4 Audit / read totals
+
+### EARS
+
+O.4.1. WHEN the operator reads the machine's state, the machine SHALL report
+the current value of coins on hand, the remaining stock of each product, and
+the collectable surplus — without altering any of them.
+
+O.4.2. Audit SHALL be permitted at any time, including while a customer balance
+is pending (§O.0.2). When read mid-transaction, the reported coins on hand
+SHALL include the customer's inserted coins, since they share the same pool.
+
+> Audit is read-only: it is the operator's view of the same state §§1–8 expose to
+> the customer only indirectly. Reading it has no side effect (unlike the
+> customer `display`, §8, which consumes one-shot messages), which is why it
+> needs no idle-machine guard.
+
+### Acceptance criteria
+
+```gherkin
+Feature: Audit
+
+  Scenario: Reading totals does not change them
+    Given a machine with a known reserve and stock
+    When the operator reads the totals twice
+    Then both reads report the same values
+    And no coins are dispensed
+```

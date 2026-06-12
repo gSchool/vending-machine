@@ -3,7 +3,7 @@ import type { Product } from "./product";
 import { NICKEL, DIME, QUARTER } from "./coin";
 import { COLA, CHIPS, CANDY } from "./product";
 import { valueOf } from "./coin-classifier";
-import { CoinBank } from "./coin-bank";
+import { CoinBank, VALUES } from "./coin-bank";
 
 /** The highest product price (cents); change may be owed up to just under this. */
 const MAX_PRICE_CENTS = Math.max(COLA.priceCents, CHIPS.priceCents, CANDY.priceCents);
@@ -120,6 +120,108 @@ export class VendingMachine {
   /** Coins made available in the coin return (change and rejected coins). */
   coinReturn(): Coin[] {
     return this.returnedCoins;
+  }
+
+  // --- Operator interface ---------------------------------------------------
+
+  /**
+   * Whether the machine is idle — no customer transaction in progress. Mutating
+   * operator actions (restock, load, collect) are permitted only while idle, so
+   * servicing can never disturb an in-progress sale (O.0). Audit reads are not
+   * guarded; they are always safe.
+   */
+  private isIdle(): boolean {
+    return this.balance === 0;
+  }
+
+  /**
+   * Sets a product's remaining stock to `count` (O.1). Restock *sets* rather
+   * than adds, so the operator states the shelf's true contents. A count of 0
+   * marks the product sold out; a positive count makes it available again.
+   * Refused with no effect while a customer has a balance pending (O.0.1).
+   */
+  restock(product: Product, count: number): void {
+    if (!this.isIdle()) return;
+    this.inventory.set(product, count);
+  }
+
+  /**
+   * Collects the surplus revenue (O.3): hands back as many coins as possible
+   * while keeping the machine change-capable (§7), and retains that float.
+   *
+   * Strategy: try to remove coins one at a time, largest value first, keeping a
+   * removal only if the bank stays change-capable. This never breaks capability,
+   * so a machine that could make change still can (O.3.2). If the machine is not
+   * change-capable to begin with there is no surplus over a capable float, so
+   * nothing is collected (O.3.3).
+   *
+   * This greedy removal guarantees capability is preserved and money is
+   * conserved (both property-tested), but it is NOT proven to collect the
+   * maximum possible value — only a capability-safe amount. A provably-maximal
+   * collection would search retained sets; the spec asks only that the machine
+   * stay change-capable, so the simpler greedy pass suffices.
+   *
+   * Refused (collects nothing) while a customer has a balance pending (O.0.1).
+   */
+  collect(): Coin[] {
+    if (!this.isIdle()) return [];
+    const collected: Coin[] = [];
+    for (const value of VALUES) {
+      while (this.bank.countOf(value) > 0) {
+        const coin = this.bank.removeOne(value);
+        if (this.canMakeChange()) {
+          collected.push(coin);
+        } else {
+          this.bank.add(coin); // putting it back would break change-making — keep it
+          break;
+        }
+      }
+    }
+    return collected;
+  }
+
+  /**
+   * The value the operator could collect right now (O.4), without changing
+   * anything. Computed by running the very same selection `collect` uses and
+   * then putting the coins back, so it is a faithful, side-effect-free predictor
+   * of what `collect` would hand back.
+   */
+  collectableSurplus(): number {
+    const surplus = this.collect();
+    this.loadChange(surplus); // restore: this read must not mutate state
+    return surplus.reduce((sum, coin) => sum + (valueOf(coin) ?? 0), 0);
+  }
+
+  /**
+   * Loads operator-supplied coins into the change reserve (O.2). Loaded coins
+   * join the same pool customer coins are deposited into, so they are conserved
+   * exactly like inserted coins and can lift the machine out of EXACT CHANGE
+   * ONLY at rest. Refused with no effect while a customer has a balance
+   * pending (O.0.1).
+   */
+  loadChange(coins: Coin[]): void {
+    if (!this.isIdle()) return;
+    for (const coin of coins) {
+      this.bank.add(coin);
+    }
+  }
+
+  /**
+   * Total value of coins physically in the machine (O.4), in cents. This is the
+   * whole pool: the change float plus any coins a customer has inserted but not
+   * yet spent — they share one bank. Read-only; reading has no side effect.
+   */
+  cashOnHand(): number {
+    return this.bank.total();
+  }
+
+  /**
+   * Remaining stock of a product (O.4). A product absent from the inventory map
+   * has no configured limit and is always in stock, reported here as Infinity
+   * (consistent with §5: only an explicit 0 is sold out).
+   */
+  stockOf(product: Product): number {
+    return this.inventory.get(product) ?? Infinity;
   }
 
   /** Converts a balance in cents into US dollar notation, e.g. 5 -> "$0.05". */

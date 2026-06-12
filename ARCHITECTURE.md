@@ -17,10 +17,10 @@ Nothing in the core does I/O — it is driven by method calls (`insertCoin`,
 
 | File | Responsibility |
 |------|----------------|
-| `vending-machine.ts` | The domain core. Holds the customer balance, the display state machine, inventory, and the coin bank. Orchestrates all behavior. |
+| `vending-machine.ts` | The domain core. Holds the customer balance, the display state machine, inventory, and the coin bank. Orchestrates all customer *and* operator behavior. |
 | `coin.ts` | The `Coin` type (`{ weightGrams, diameterMm }`) and the real specs for the accepted coins (`NICKEL`, `DIME`, `QUARTER`). |
 | `coin-classifier.ts` | `valueOf(coin)` — assigns a cents value to a coin **by its physical properties**, or `null` if unrecognized. The machine never trusts a coin to know its own value. |
-| `coin-bank.ts` | `CoinBank` — the machine's reserve of coins, tracked as counts per denomination. Owns all change math: `add`, `total`, `canMake`, `withdraw`. |
+| `coin-bank.ts` | `CoinBank` — the machine's reserve of coins, tracked as counts per denomination. Owns all change math: `add`, `total`, `canMake`, `withdraw`, plus `countOf`/`removeOne` for taking out a *specific* denomination (used by collect). |
 | `product.ts` | The `Product` type and the three products (`COLA` $1.00, `CHIPS` $0.50, `CANDY` $0.65), priced in cents. |
 | `invalid-coins.fixtures.ts` | Test-only fixtures for coins the machine rejects (penny, half dollar, dollar coin, blank slug). Production code has no concept of these. |
 
@@ -67,7 +67,23 @@ anything.
 7. **Inventory is sparse.** A product *absent* from the inventory map is treated
    as in stock; only an explicit count of `0` is `SOLD OUT`. This keeps the
    default constructor (`new VendingMachine()`) fully stocked without listing
-   every product.
+   every product. `stockOf` surfaces this as `Infinity` for an unstocked product.
+
+8. **The operator is a second actor.** Alongside the customer methods, the core
+   exposes an **operator interface** (REQUIREMENTS.md §§O.0–O.4): `restock`,
+   `loadChange`, `collect`, and the read-only audit accessors `cashOnHand`,
+   `stockOf`, `collectableSurplus`. The mutating actions are guarded by
+   `isIdle()` (balance must be zero) so servicing can never disturb an
+   in-progress sale; audit reads are unguarded and always safe.
+
+9. **The change float is derived, not configured.** `collect` does not retain a
+   fixed operator-set float. It hands back as much as it can while keeping the
+   machine *change-capable* (the §7 "every 5¢ increment up to the top price"
+   rule), and retains the rest. The retained float is therefore whatever §7
+   currently requires — it tracks the bank's contents, not a stored number.
+   `collectableSurplus` is a side-effect-free predictor: it runs the same
+   selection and puts the coins back, so it always equals what `collect` would
+   return (pinned by a test).
 
 ## Core invariant: conservation of money
 
@@ -95,7 +111,7 @@ against an independent brute-force oracle.
 
 ## Test strategy
 
-`vitest` for the runner, `fast-check` for property-based tests. ~38 tests total.
+`vitest` for the runner, `fast-check` for property-based tests. ~61 tests total.
 Example tests document each feature's behavior; property tests guard the
 load-bearing logic (classification, change-making, conservation).
 
@@ -111,6 +127,11 @@ load-bearing logic (classification, change-making, conservation).
 | `coin-classifier.test.ts` | Classification properties (valid → denomination, non-match → null). |
 | `coin-bank.test.ts` | Bank examples + `canMake` oracle + `withdraw` conservation properties. |
 | `conservation.test.ts` | End-to-end money conservation over random op sequences. |
+| `restock.test.ts` | Operator restock (O.1): set-not-add, clears/sets `SOLD OUT`. |
+| `load-change.test.ts` | Operator load change (O.2): clears `EXACT CHANGE ONLY` at the boundary, conserves loaded value. |
+| `collect.test.ts` | Operator collect (O.3): hands back surplus, collects nothing when not change-capable, + property test that capability is preserved and money conserved. |
+| `audit.test.ts` | Operator audit (O.4): `cashOnHand`/`stockOf`/`collectableSurplus`, read-only, allowed mid-transaction; surplus predicts `collect`. |
+| `servicing-guard.test.ts` | Operator guard (O.0): mutating actions refused while a balance is pending; audit reads exempt. |
 
 ## Build & run
 
@@ -128,14 +149,16 @@ None of these are required by the kata; they are the real path to deployment.
    alternative (two nickels) would have. A real machine optimizes to preserve
    small denominations. This is a correctness-of-service issue, property-testable
    ("a withdrawal never renders a previously-makeable amount unmakeable when an
-   alternative selection existed").
+   alternative selection existed"). `collect`'s removal is greedy in the same
+   spirit: it is proven capability-preserving and conserving, but **not** proven
+   to collect the maximum possible value — a provably-maximal collection would
+   search retained sets.
 
-2. **No operator APIs.** Restocking products, loading/collecting coins, and
-   reading totals are constructor-only. Real operation needs methods for these.
-
-3. **No atomicity / concurrency model.** `selectProduct` does read-modify-write
+2. **No atomicity / concurrency model.** `selectProduct` does read-modify-write
    on balance, bank, and inventory. If driven by concurrent hardware threads
-   (coin sensor, button, display), these sequences need to be made atomic.
+   (coin sensor, button, display), these sequences need to be made atomic. The
+   operator's `isIdle()` guard (decision #8) assumes a single thread of control;
+   under real concurrency it would need proper locking, not a balance check.
 
-4. **Coin matching is exact.** See modeling decision #1 — real coin acceptance
+3. **Coin matching is exact.** See modeling decision #1 — real coin acceptance
    uses tolerance bands.

@@ -10,7 +10,7 @@ const COIN_FOR_VALUE: Record<number, Coin> = {
 };
 
 /** Denomination values, largest first (the order change is selected in). */
-const VALUES = [25, 10, 5];
+export const VALUES = [25, 10, 5];
 
 /**
  * The machine's reserve of coins, tracked as counts per denomination. Inserted
@@ -43,6 +43,24 @@ export class CoinBank {
       sum += value * count;
     }
     return sum;
+  }
+
+  /** How many coins of a given denomination value the bank holds. */
+  countOf(value: number): number {
+    return this.counts.get(value) ?? 0;
+  }
+
+  /**
+   * Removes one coin of the given denomination value and returns it. Throws if
+   * none are held. Unlike `withdraw`, this takes a *specific* coin out rather
+   * than making change for an amount — used when selecting which coins to keep.
+   */
+  removeOne(value: number): Coin {
+    if (this.countOf(value) <= 0) {
+      throw new Error(`No ${value}-cent coin to remove`);
+    }
+    this.counts.set(value, this.countOf(value) - 1);
+    return COIN_FOR_VALUE[value]!;
   }
 
   /** Whether the bank can produce exactly `cents` from the coins it holds. */
