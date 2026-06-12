@@ -92,6 +92,13 @@ export class CoinBank {
    * impossible. Tries denominations largest first, but backtracks (a plain
    * greedy pass can fail when a larger coin is available but a smaller-coin
    * solution is required). Returns a map of denomination value -> count used.
+   *
+   * Because each denomination tries its highest feasible count first and the
+   * first complete solution is returned, the selection is "spend largest coins
+   * first" — it uses as many quarters as possible, then dimes, then nickels.
+   * That maximizes large-coin spend and so retains the flexible small coins for
+   * future change. `withdraw-optimal.test.ts` proves this against a brute-force
+   * oracle.
    */
   private selectFor(cents: number): Map<number, number> | null {
     const solve = (remaining: number, index: number): Map<number, number> | null => {

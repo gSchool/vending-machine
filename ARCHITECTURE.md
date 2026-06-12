@@ -111,7 +111,7 @@ against an independent brute-force oracle.
 
 ## Test strategy
 
-`vitest` for the runner, `fast-check` for property-based tests. ~61 tests total.
+`vitest` for the runner, `fast-check` for property-based tests. ~63 tests total.
 Example tests document each feature's behavior; property tests guard the
 load-bearing logic (classification, change-making, conservation).
 
@@ -126,6 +126,7 @@ load-bearing logic (classification, change-making, conservation).
 | `insufficient-change.test.ts` | Refuse-and-return when change can't be made. |
 | `coin-classifier.test.ts` | Classification properties (valid → denomination, non-match → null). |
 | `coin-bank.test.ts` | Bank examples + `canMake` oracle + `withdraw` conservation properties. |
+| `withdraw-optimal.test.ts` | Proves `withdraw` spends largest-coins-first (preserves small denominations) against a brute-force oracle. |
 | `conservation.test.ts` | End-to-end money conservation over random op sequences. |
 | `restock.test.ts` | Operator restock (O.1): set-not-add, clears/sets `SOLD OUT`. |
 | `load-change.test.ts` | Operator load change (O.2): clears `EXACT CHANGE ONLY` at the boundary, conserves loaded value. |
@@ -143,16 +144,20 @@ load-bearing logic (classification, change-making, conservation).
 
 None of these are required by the kata; they are the real path to deployment.
 
-1. **Change-selection strategy is greedy and can strand future change.**
-   `withdraw` dispenses largest-coin-first, which can hand out a coin
-   (e.g. a dime) that leaves the bank less able to make future change than an
-   alternative (two nickels) would have. A real machine optimizes to preserve
-   small denominations. This is a correctness-of-service issue, property-testable
-   ("a withdrawal never renders a previously-makeable amount unmakeable when an
-   alternative selection existed"). `collect`'s removal is greedy in the same
-   spirit: it is proven capability-preserving and conserving, but **not** proven
-   to collect the maximum possible value — a provably-maximal collection would
-   search retained sets.
+1. **`collect`'s removal is not proven value-maximal.** `collect` removes coins
+   greedily (largest first, keeping each removal only while the bank stays
+   change-capable). This is proven capability-preserving and money-conserving
+   (property-tested), but **not** proven to collect the maximum possible value —
+   a provably-maximal collection would search retained sets. In practice the
+   greedy pass collects the obvious surplus; an operator who wants every last
+   collectable cent is the only one affected.
+
+   > *Resolved:* an earlier draft listed `withdraw` here as "greedy and can
+   > strand future change." That was wrong. `withdraw`/`selectFor` already
+   > spends largest-coins-first via backtracking, which *is* the
+   > preserve-small-denominations optimum, and `withdraw-optimal.test.ts` proves
+   > it against a brute-force oracle. Only `collect` (a different objective —
+   > maximize value removed) remains non-optimal.
 
 2. **No atomicity / concurrency model.** `selectProduct` does read-modify-write
    on balance, bank, and inventory. If driven by concurrent hardware threads
