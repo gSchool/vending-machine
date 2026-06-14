@@ -27,9 +27,15 @@ describe("VendingMachine — conservation of money (property-based)", () => {
   it("returns exactly what was inserted minus what was purchased", () => {
     fc.assert(
       fc.property(fc.array(opArb, { maxLength: 40 }), (ops) => {
-        // Ample stock (products absent from the map are in stock) and ample
-        // change, so the only reason a purchase fails is insufficient funds.
-        const machine = new VendingMachine(new Map(), ampleReserve());
+        // Ample stock and ample change, so the only reason a purchase fails is
+        // insufficient funds. Under §5 a product must be configured to be in
+        // stock, so every product is given plenty.
+        const stock = new Map<Product, number>([
+          [COLA, 100],
+          [CHIPS, 100],
+          [CANDY, 100],
+        ]);
+        const machine = new VendingMachine(stock, ampleReserve());
 
         let inserted = 0;
         let purchased = 0;

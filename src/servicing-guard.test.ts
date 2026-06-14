@@ -54,11 +54,8 @@ describe("VendingMachine — servicing requires an idle machine (O.0)", () => {
     const machine = new VendingMachine(new Map(), [QUARTER, DIME, NICKEL]);
     machine.insertCoin(QUARTER);
 
-    // Reads are never refused, even with a balance pending.
-    expect(machine.cashOnHand()).toBe(65);
-    expect(machine.stockOf(COLA)).toBe(Infinity);
-    expect(machine.collectableSurplus()).toBe(0); // surplus read is allowed; with a
-    //                                                pending balance the float can't be
-    //                                                collected, so surplus reads as 0
+    // Reads are never refused, even with a balance pending (§O.0.2).
+    expect(machine.cashOnHand()).toBe(65); // float + pending coins share the pool
+    expect(machine.revenue()).toBe(0); // no completed sale, so no revenue (§O.4.2)
   });
 });

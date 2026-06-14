@@ -8,16 +8,14 @@ describe("VendingMachine — operator load change (O.2)", () => {
     const machine = new VendingMachine(new Map(), []);
     expect(machine.display()).toBe("EXACT CHANGE ONLY");
 
-    // Not yet enough: 60¢ in small coins cannot make every 5¢ increment up to
-    // the highest price (e.g. it cannot make 65¢), so the warning persists.
-    machine.loadChange([
-      ...Array(4).fill(NICKEL),
-      ...Array(4).fill(DIME),
-    ]);
+    // Not yet enough: a lone nickel can make 5¢ but not every 5¢ step up to the
+    // ceiling C ($0.20) — it cannot make 10/15/20 — so the warning persists.
+    machine.loadChange([NICKEL]);
     expect(machine.display()).toBe("EXACT CHANGE ONLY");
 
-    // Topping up with quarters now lets it make every increment up to 95¢.
-    machine.loadChange([...Array(4).fill(QUARTER)]);
+    // Three dimes now cover every step to C: 5 (N), 10/20 (dimes), 15 (D+N).
+    // The machine becomes change-capable (§7) and resumes INSERT COIN.
+    machine.loadChange([...Array(3).fill(DIME)]);
     expect(machine.display()).toBe("INSERT COIN");
   });
 

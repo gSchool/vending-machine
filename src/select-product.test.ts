@@ -3,9 +3,17 @@ import { VendingMachine } from "./vending-machine";
 import { COLA, CHIPS, CANDY } from "./product";
 import { QUARTER, DIME, NICKEL } from "./coin";
 
+/**
+ * A machine stocked with every product (and the default ample change). Under §5
+ * an unconfigured product starts sold out, so tests that exercise a sale must
+ * configure the product's stock explicitly.
+ */
+const stockedMachine = (): VendingMachine =>
+  new VendingMachine(new Map([[COLA, 5], [CHIPS, 5], [CANDY, 5]]));
+
 describe("VendingMachine — select product", () => {
   it("displays the price when a product is selected with no money inserted", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.selectProduct(COLA);
 
@@ -13,7 +21,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("reverts to INSERT COIN after the price message is shown once", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.selectProduct(COLA);
     machine.display(); // first check shows the price
@@ -22,7 +30,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("dispenses and displays THANK YOU when enough money is inserted", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.insertCoin(QUARTER);
     machine.insertCoin(QUARTER);
@@ -34,7 +42,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("resets the balance to zero after a purchase", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.insertCoin(QUARTER);
     machine.insertCoin(QUARTER);
@@ -47,7 +55,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("shows the price then the current amount when funds are insufficient", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.insertCoin(QUARTER);
     machine.selectProduct(COLA);
@@ -57,7 +65,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("displays the chips price when selected with no money", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.selectProduct(CHIPS);
 
@@ -65,7 +73,7 @@ describe("VendingMachine — select product", () => {
   });
 
   it("dispenses candy and displays THANK YOU with exact change", () => {
-    const machine = new VendingMachine();
+    const machine = stockedMachine();
 
     machine.insertCoin(QUARTER);
     machine.insertCoin(QUARTER);

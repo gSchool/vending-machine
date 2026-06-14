@@ -10,7 +10,7 @@ const totalCents = (coins: Coin[]): number =>
 describe("VendingMachine — refuse sale when change cannot be made", () => {
   it("returns the customer's coins and does not dispense", () => {
     // Empty bank; the four inserted quarters cannot make 35c change.
-    const machine = new VendingMachine(new Map(), []);
+    const machine = new VendingMachine(new Map([[CANDY, 1]]), []);
 
     machine.insertCoin(QUARTER);
     machine.insertCoin(QUARTER);
@@ -23,7 +23,7 @@ describe("VendingMachine — refuse sale when change cannot be made", () => {
   });
 
   it("displays EXACT CHANGE ONLY when it refuses for lack of change", () => {
-    const machine = new VendingMachine(new Map(), []);
+    const machine = new VendingMachine(new Map([[CANDY, 1]]), []);
 
     machine.insertCoin(QUARTER);
     machine.insertCoin(QUARTER);

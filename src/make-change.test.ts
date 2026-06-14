@@ -10,7 +10,7 @@ const totalCents = (coins: ReturnType<VendingMachine["coinReturn"]>): number =>
 
 describe("VendingMachine — make change", () => {
   it("returns the overpaid amount as change after a purchase", () => {
-    const machine = new VendingMachine();
+    const machine = new VendingMachine(new Map([[COLA, 1]]));
 
     // $1.25 inserted for a $1.00 cola -> $0.25 change
     machine.insertCoin(QUARTER);
@@ -24,7 +24,7 @@ describe("VendingMachine — make change", () => {
   });
 
   it("returns change using varied coin denominations", () => {
-    const machine = new VendingMachine();
+    const machine = new VendingMachine(new Map([[COLA, 1]]));
 
     // $1.40 inserted for a $1.00 cola -> $0.40 change
     machine.insertCoin(QUARTER);
