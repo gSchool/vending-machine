@@ -59,6 +59,9 @@ npx vitest run    # single pass, no watch
 Web UI
 ------
 
+![The Vendomatic 3000 web UI: a dot-matrix display, product and coin buttons, a
+coin-return tray, and an operator service panel.](docs/screenshot.png)
+
 A small web page exposes the whole machine — customer actions (insert coins,
 select a product, return/take coins) and the operator service panel (restock,
 load change, withdraw all cash, and a cash-on-hand readout that breaks the coins
