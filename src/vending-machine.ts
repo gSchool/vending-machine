@@ -29,8 +29,6 @@ export class VendingMachine {
   private pendingMessage: string | null = null;
   private returnedCoins: Coin[] = [];
   private bank: CoinBank;
-  /** Uncollected earnings: Σ prices of sales since the last collect (§O.5). */
-  private revenueCents: number = 0;
 
   /**
    * Inventory maps a product to its remaining stock. A product absent from the
@@ -108,7 +106,6 @@ export class VendingMachine {
     this.returnedCoins.push(...this.bank.withdraw(changeOwed));
     this.balance = 0;
     this.decrementStock(product);
-    this.revenueCents += product.priceCents; // the sale's earnings (§O.5.1)
     this.pendingMessage = "THANK YOU";
   }
 
@@ -170,7 +167,7 @@ export class VendingMachine {
 
   /**
    * Whether the machine is idle — no customer transaction in progress. Mutating
-   * operator actions (restock, load, collect) are permitted only while idle, so
+   * operator actions (restock, load, withdraw) are permitted only while idle, so
    * servicing can never disturb an in-progress sale (O.0). Audit reads are not
    * guarded; they are always safe.
    */
@@ -193,50 +190,28 @@ export class VendingMachine {
   }
 
   /**
-   * Collects the operator's earnings (§O.3): hands back coins totaling the
-   * current revenue, drawn largest-coin-first (§3.3), and reduces revenue by the
-   * value handed back. The change float — the starting reserve plus loaded
-   * change — stays in the machine; collect never returns it.
+   * Withdraws all cash from the machine (§O.3): hands back every coin on hand,
+   * drawn largest-denomination-first (§3.3), and empties the bank. The operator
+   * owns the machine's cash and may take all of it — the starting reserve, loaded
+   * change, and the proceeds of every sale alike; the machine keeps no float back.
    *
-   * Change-capability guard (§O.3.2): if the machine is change-capable, it never
-   * pays out so much that it could no longer make every 5¢ step up to C — it
-   * holds back the float-critical small coins, retaining their value as revenue.
-   * If the machine was already not change-capable, the guard does not apply and
-   * the full revenue is paid out.
+   * After a full withdrawal the bank is empty, so the machine cannot make change
+   * and shows EXACT CHANGE ONLY at rest (§7) until the operator reloads change
+   * (§O.2). Re-seeding the change float is the operator's responsibility, not the
+   * machine's.
    *
-   * Strategy: remove coins one at a time, largest value first, up to the revenue
-   * owed, keeping each removal only while it does not strand a previously
-   * change-capable machine. Money is conserved: revenue falls by exactly the
-   * value handed back (§O.3.3).
-   *
-   * Refused (collects nothing) while a customer has a balance pending (O.0.1).
+   * Money is conserved: the coins handed back are exactly the coins removed (§3.2).
+   * Refused (withdraws nothing) while a customer has a balance pending (O.0.1).
    */
-  collect(): Coin[] {
+  withdrawAll(): Coin[] {
     if (!this.isIdle()) return [];
-    const guardCapability = this.canMakeChange();
-    const collected: Coin[] = [];
-    let owed = this.revenueCents;
-
+    const withdrawn: Coin[] = [];
     for (const value of VALUES) {
-      while (owed >= value && this.bank.countOf(value) > 0) {
-        const coin = this.bank.removeOne(value);
-        if (guardCapability && !this.canMakeChange()) {
-          this.bank.add(coin); // would strand the float — keep it, leave as revenue
-          break;
-        }
-        collected.push(coin);
-        owed -= value;
+      while (this.bank.countOf(value) > 0) {
+        withdrawn.push(this.bank.removeOne(value));
       }
     }
-
-    const handedBack = collected.reduce((sum, coin) => sum + (valueOf(coin) ?? 0), 0);
-    this.revenueCents -= handedBack; // conserve: revenue falls by exactly the payout
-    return collected;
-  }
-
-  /** The operator's uncollected earnings, in cents (§O.4, §O.5). Read-only. */
-  revenue(): number {
-    return this.revenueCents;
+    return withdrawn;
   }
 
   /**
@@ -260,6 +235,15 @@ export class VendingMachine {
    */
   cashOnHand(): number {
     return this.bank.total();
+  }
+
+  /**
+   * The coins physically in the machine, as a count per denomination value
+   * (O.4) — the detail behind {@link cashOnHand}. Like cashOnHand this is the
+   * whole shared pool: change float plus any unspent inserted coins. Read-only.
+   */
+  coinInventory(): { value: number; count: number }[] {
+    return VALUES.map((value) => ({ value, count: this.bank.countOf(value) }));
   }
 
   /**

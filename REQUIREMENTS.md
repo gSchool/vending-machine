@@ -8,6 +8,12 @@ confirm it matches intent.
 
 ## Revision history
 
+**2026-06-15 — Operator owns all cash.** The earnings-based operator model was
+replaced: the machine no longer tracks revenue, and the operator withdraws *all*
+the cash on hand in one action (§O.3), re-seeding change afterward via load change
+(§O.2). Removed the revenue concept and §O.5 entirely; `collect` (earnings) became
+`withdraw cash` (everything). Rationale in Appendix A.6.
+
 **2026-06-15 — Under-specification pass.** A second review closed gaps where
 behavior was assumed but never stated:
 
@@ -17,7 +23,8 @@ behavior was assumed but never stated:
   the return accumulates until collected (§4.2, §4.3).
 - Restock rejects a count that is not a non-negative integer (O.1.3).
 - A partial collection leaves its remainder as revenue, visible on the next
-  audit; no separate signal is emitted (O.3.4).
+  audit; no separate signal is emitted (O.3.4). *(Superseded 2026-06-15: revenue
+  removed; see the top entry.)*
 - Operator actions do not disturb a pending one-shot message (§8.5).
 
 **2026-06-12 — Consistency-and-completeness review.** A clause-by-clause pass
@@ -35,7 +42,8 @@ each decision. Notable changes:
 - The `EXACT CHANGE ONLY` threshold is re-grounded on the coin set as the change
   guarantee ceiling C = `$0.20`, replacing the price-based `$0.95` (§7).
 - Earnings-based operator model: revenue is tracked and is what `collect` pays out,
-  leaving the loaded change as float (§O.3, §O.5).
+  leaving the loaded change as float (§O.3, §O.5). *(Superseded 2026-06-15: revenue
+  removed; the operator now withdraws all cash. See the top entry and Appendix A.6.)*
 - Stock is finite-only; an unconfigured product starts sold out (§5).
 - Coin recognition uses tolerance windows, with a documented known weakness against
   spec-matching slugs (§9, Appendix A.8).
@@ -315,12 +323,11 @@ total value of valid coins placed in the coin return SHALL equal the total value
 of valid coins inserted minus the total price of products actually dispensed. The
 machine SHALL hand back only coins it holds; it never creates or destroys value.
 Invalid coins are not part of this accounting: a rejected coin passes straight to
-the coin return (§1.3) without affecting the balance, the available change, or the
-revenue.
+the coin return (§1.3) without affecting the balance or the available change.
 
 3.3. Whenever the machine pays out coins and the amount can be formed in more than
 one way from the coins on hand — as change for a sale (§3.1), a refund of a refused
-sale (§6.1), a return of the balance (§4.1), or collected earnings (§O.3) — the
+sale (§6.1), a return of the balance (§4.1), or a cash withdrawal (§O.3) — the
 machine SHALL dispense the combination containing the most quarters; among
 combinations with equally many quarters, the one containing the most dimes. This
 combination is unique, so every payout is fully determined by the coins on hand and
@@ -328,7 +335,7 @@ the amount.
 
 > Equivalently: the machine pays out in the largest denominations it can, keeping
 > the smaller coins on hand to preserve its future ability to make change. This one
-> rule governs change, refunds, returns, and collected earnings alike. A side
+> rule governs change, refunds, returns, and cash withdrawals alike. A side
 > effect is that a return can hand back larger coins than were inserted — the
 > machine doubles as a coin-changer, value-for-value.
 
@@ -613,8 +620,8 @@ message; the next display read then reflects the resulting balance or resting
 state (§1.2, §4.1). An invalid coin, rejected with no change to the balance
 (§1.3), does not disturb a pending message.
 
-8.5. An operator action (restock, load change, collect, audit) SHALL NOT disturb a
-pending one-shot message. A one-shot can be pending while the balance is zero — for
+8.5. An operator action (restock, load change, withdraw cash, audit) SHALL NOT
+disturb a pending one-shot message. A one-shot can be pending while the balance is zero — for
 example `THANK YOU` after a sale, before it is read — and the machine is then idle,
 so operator actions are permitted (§O.0); they nonetheless leave the pending message
 intact, and a later customer read still shows it. Only the customer actions in §8.4,
@@ -754,7 +761,7 @@ Feature: Coin recognition by tolerance window
 
 Everything above describes the **customer** — the person buying a product.
 This section describes the **operator** — the person who services the machine:
-restocking products, loading change, collecting revenue, and auditing the
+restocking products, loading change, withdrawing cash, and auditing the
 machine's state. The operator is a distinct actor with privileged access
 (a key, a service panel); operator actions are not exposed to the customer.
 
@@ -763,25 +770,26 @@ machine's state. The operator is a distinct actor with privileged access
 - **Operator** — the privileged actor who services the machine. Distinct from
   the customer; the operator's actions are not part of the customer interface
   (§§1–8) and are not available through it.
-- **Revenue** — the value the machine has taken in from completed sales since the
-  last collect: the operator's uncollected earnings, and the cash `collect` pays
-  out. A completed sale adds the product's price to revenue (§O.5.1); only
-  `collect` (§O.3) reduces it (§O.5.2).
-- **Change float** — the coins the machine keeps to make change: everything on
-  hand that is *not* revenue — the starting reserve plus all loaded change, less
-  anything previously collected (equivalently, coins-on-hand value minus revenue).
-  `collect` leaves the change float in the machine and removes only revenue, so the
-  float is operator-controlled, not pinned to a minimum. The machine is
-  *change-capable* (§7) when the coins it holds can make every 5¢ step up to the
-  ceiling C (`$0.20`); otherwise it shows `EXACT CHANGE ONLY` at rest.
+- **Cash on hand** — the value of every coin physically in the machine: the
+  starting reserve, all loaded change, and the proceeds of every sale, pooled
+  together (§A.1). The operator owns it all and may withdraw all of it (§O.3).
+  The machine tracks no separate "earnings" figure — sale proceeds are simply
+  coins in the same pool, indistinguishable from loaded change.
+- **Change float** — the coins the machine holds for making change. There is no
+  reserved subset: the float *is* the cash on hand, and any of it may be paid out
+  as change or withdrawn by the operator. The machine is *change-capable* (§7)
+  when the coins it holds can make every 5¢ step up to the ceiling C (`$0.20`);
+  otherwise it shows `EXACT CHANGE ONLY` at rest. Keeping enough change on hand is
+  the operator's responsibility (load more via §O.2); the machine never holds cash
+  back to protect the float.
 - **At rest** — balance is zero and no customer transaction is in progress
   (§ resting state). Operator actions are permitted only at rest.
 
 > **Servicing actions are permitted only at rest.** Because the customer's
 > inserted coins live in the same pool the operator services, a *mutating*
-> operator action (restock, load change, collect) attempted while a customer has
-> a balance pending is **refused** with no effect, so servicing can never disturb
-> an in-progress sale (see O.0). Audit (§O.4) is read-only and is always
+> operator action (restock, load change, withdraw cash) attempted while a customer
+> has a balance pending is **refused** with no effect, so servicing can never
+> disturb an in-progress sale (see O.0). Audit (§O.4) is read-only and is always
 > permitted, including mid-transaction.
 
 ---
@@ -790,9 +798,9 @@ machine's state. The operator is a distinct actor with privileged access
 
 ### EARS
 
-O.0.1. IF a mutating operator action (restock, load change, or collect) is
+O.0.1. IF a mutating operator action (restock, load change, or withdraw cash) is
 attempted while the customer balance is greater than zero, THEN the machine
-SHALL refuse the action, leaving stock, change, revenue, and balance unchanged.
+SHALL refuse the action, leaving stock, change, and balance unchanged.
 
 O.0.2. Audit (§O.4) is exempt: a read SHALL be permitted regardless of the
 customer balance, since it has no side effect and cannot disturb a sale.
@@ -804,7 +812,7 @@ Feature: Operator actions require an idle machine
 
   Scenario: Servicing is refused while a customer has money in
     Given a machine with a quarter inserted
-    When the operator attempts to collect coins
+    When the operator attempts to withdraw cash
     Then the action is refused
     And the balance is still "$0.25"
     And the coins on hand are unchanged
@@ -879,9 +887,9 @@ O.2.3. Loaded coins SHALL be conserved exactly like inserted coins: they
 increase the available change by their full value and are never created or
 destroyed (§3.2).
 
-> Loading change is the operator's remedy for `EXACT CHANGE ONLY`. Loaded coins
-> are not revenue; they become change float and are never returned by `collect`
-> (§O.3) — only earnings are collected.
+> Loading change is the operator's remedy for `EXACT CHANGE ONLY`, including after
+> a full withdrawal (§O.3) empties the bank. Loaded coins join the cash on hand
+> and are indistinguishable from any other coins in the pool.
 
 ### Acceptance criteria
 
@@ -898,68 +906,59 @@ Feature: Load change
 
 ---
 
-## O.3 Collect coins
+## O.3 Withdraw cash
 
 ### EARS
 
-O.3.1. WHEN the operator collects coins while at rest, the machine SHALL hand
-back coins totaling the current revenue — the operator's earnings — drawn
-largest-denomination-first (§3.3), and SHALL reduce the revenue by the value
-handed back. It SHALL retain its change float; collect never returns the starting
-reserve or loaded change.
+O.3.1. WHEN the operator withdraws cash while at rest, the machine SHALL hand
+back every coin on hand — the starting reserve, all loaded change, and the
+proceeds of every sale alike — drawn largest-denomination-first (§3.3), and SHALL
+empty the coin bank. The operator owns the machine's cash; the machine keeps no
+float back.
 
-O.3.2. Collecting SHALL NOT make the machine unable to make change if it could
-before: IF the machine is change-capable and paying out the full revenue would
-leave it unable to make every 5¢ step up to the ceiling C (§7), THEN it SHALL pay
-out only as much revenue as it can while remaining change-capable, retaining the
-remainder as revenue. (If the machine was already not change-capable, this guard
-does not apply and the full revenue is paid out.) Collecting therefore never
-causes `EXACT CHANGE ONLY` at rest if it was not already showing.
+O.3.2. After a full withdrawal the bank is empty, so the machine cannot make
+change and SHALL show `EXACT CHANGE ONLY` at rest (§7) until the operator reloads
+change (§O.2). The machine never withholds cash to protect its own
+change-capability — keeping change on hand is the operator's responsibility, not
+the machine's.
 
-O.3.3. Collecting SHALL conserve money: the value handed to the operator equals
-the value of coins removed, and the revenue decreases by exactly that amount
-(§3.2).
+O.3.3. Withdrawing SHALL conserve money: the value handed to the operator equals
+the value of the coins removed, and the cash on hand decreases by exactly that
+amount (§3.2). A withdrawal from an already-empty bank hands back nothing.
 
-O.3.4. WHEN a collection pays out less than the full revenue because of the
-change-capability guard (O.3.2), the retained remainder SHALL remain as revenue
-and SHALL be visible to the operator on the next audit (§O.4). The machine emits
-no separate "partial collection" signal; the audited revenue *is* the record of
-what was held back, and a later collection (after the float is replenished by
-loading change, §O.2) pays it out.
-
-> Collect pays the operator their earnings and nothing more: the starting reserve
-> and any loaded change stay in the machine as change float, so the float is
-> operator-controlled — load more change and more stays. Because earnings are paid
-> largest-coins-first (§3.3) they come out mostly as quarters, leaving the small
-> coins that make change; only when the earnings are themselves tied up in
-> float-critical small coins is any revenue left behind (O.3.2).
-
-> A partial collection is not an error and raises no flag — the operator sees it by
-> comparing the cash handed out against the revenue reported by a follow-up audit
-> (O.3.4). Loading more change (§O.2) frees the held-back earnings for a later
-> collect.
+> The operator owns the machine and all the cash in it: one action empties the
+> till, with no earnings/float distinction and no minimum kept back. This is the
+> simplest honest model of a route operator who pulls all the coins and re-seeds a
+> fresh change bank. The cost is that the operator must reload change (§O.2) after
+> withdrawing, or the machine will refuse any sale that needs change (§6.1) and
+> warn `EXACT CHANGE ONLY` (§7) — the machine signals the consequence rather than
+> preventing the withdrawal.
 
 ### Acceptance criteria
 
 ```gherkin
-Feature: Collect coins
+Feature: Withdraw cash
 
-  Scenario: Collecting before any sales returns nothing
+  Scenario: Withdrawing hands back all the cash on hand
     Given a machine loaded with $5.00 of change
-    And no sales have occurred
     And no coins inserted
-    When the operator collects coins
-    Then no coins are handed to the operator
-    And the machine still holds $5.00 of change
+    When the operator withdraws cash
+    Then the operator receives $5.00
+    And the machine holds no change
 
-  Scenario: Collect returns earnings and leaves the loaded change
+  Scenario: A withdrawal includes the proceeds of sales
     Given a machine loaded with $5.00 of change and able to make change
     And no coins inserted
     When a customer buys cola for $1.00 with exact payment
-    And the operator collects coins
-    Then the operator receives $1.00
-    And the machine still holds $5.00 of change
-    And the display still shows "INSERT COIN"
+    And the operator withdraws cash
+    Then the operator receives $6.00
+
+  Scenario: After a full withdrawal the machine asks for exact change
+    Given a machine that has just had all its cash withdrawn
+    And no coins inserted
+    When the display is read
+    Then it shows "EXACT CHANGE ONLY"
+    And loading enough change restores "INSERT COIN"
 ```
 
 ---
@@ -969,22 +968,19 @@ Feature: Collect coins
 ### EARS
 
 O.4.1. WHEN the operator reads the machine's state, the machine SHALL report
-the current value of coins on hand and the count of each denomination held, the
-remaining stock of each product, and the revenue (the collectable earnings) —
-without altering any of them.
+the current value of coins on hand and the count of each denomination held, and
+the remaining stock of each product — without altering any of them.
 
 O.4.2. Audit SHALL be permitted at any time, including while a customer balance
 is pending (§O.0.2). When read mid-transaction, the reported coins on hand
-SHALL include the customer's inserted coins, since they share the same pool. The
-reported revenue, however, counts only completed sales and is unaffected by an
-in-progress balance.
+SHALL include the customer's inserted coins, since they share the same pool.
 
 > Audit is read-only: it is the operator's view of the same state §§1–8 expose to
 > the customer only indirectly. Reading it has no side effect (unlike the
 > customer `display`, §8, which consumes one-shot messages), which is why it
 > needs no idle-machine guard. The per-denomination counts let the operator see,
 > for example, whether nickels are running low before the machine ever warns
-> `EXACT CHANGE ONLY`.
+> `EXACT CHANGE ONLY` — or how much cash is in the till before a withdrawal (§O.3).
 
 ### Acceptance criteria
 
@@ -997,49 +993,12 @@ Feature: Audit
     Then both reads report the same values
     And no coins are dispensed
 
-  Scenario: Audit reports earned revenue
-    Given a machine that has completed sales with prices totaling $2.15
+  Scenario: Audit reports cash on hand including sale proceeds
+    Given a machine loaded with $5.00 of change
     And no coins inserted
-    When the operator reads the totals
-    Then the reported revenue is "$2.15"
-```
-
----
-
-## O.5 Revenue
-
-### EARS
-
-O.5.1. WHEN a sale completes (§2.1), the machine SHALL add the dispensed product's
-price to the revenue.
-
-O.5.2. The revenue SHALL change only through O.5.1 (a completed sale) and `collect`
-(§O.3); no other action — an invalid coin, a refused or insufficient-funds
-selection, a return, a `SOLD OUT` selection, restock, or load change — alters it.
-
-> Revenue is the machine's only running account: it rises by a product's price
-> exactly when that product is dispensed, and falls only when the operator collects
-> earnings. Everything else moves coins between the customer and the coin return
-> without touching what the operator has earned.
-
-### Acceptance criteria
-
-```gherkin
-Feature: Revenue accrual
-
-  Scenario: A completed sale adds its price to revenue
-    Given a machine reporting "$0.00" revenue
-    And the machine can make change
-    When candy is purchased for $0.65
-    Then the reported revenue is "$0.65"
-
-  Scenario: A refused sale does not change revenue
-    Given a machine reporting "$1.30" revenue
-    And the machine cannot make change
-    When three quarters ($0.75) are inserted
-    And candy is selected
-    Then the sale is refused
-    And the reported revenue is still "$1.30"
+    When a customer buys cola for $1.00 with exact payment
+    And the operator reads the totals
+    Then the reported cash on hand is "$6.00"
 ```
 
 ---
@@ -1048,7 +1007,7 @@ Feature: Revenue accrual
 
 This appendix records the *why* behind the non-obvious choices above, so they are
 not relitigated by a future reader. It is explanatory only; the normative contract
-is §§1–9 and O.0–O.5.
+is §§1–9 and O.0–O.4.
 
 ## A.1 Inserted coins join the change pool immediately (Model A)
 
@@ -1067,7 +1026,7 @@ fixed rule, two conforming builds diverge over a sequence of transactions (the s
 history can leave one able to make a nickel and the other not), and "rebuild from
 scratch → identical machine" fails. Largest-first also conserves the small coins the
 machine most needs for future change. The rule governs change, refunds, returns, and
-collected earnings alike.
+cash withdrawals alike.
 
 ## A.3 Selection precedence: sold-out → funds → change → sell (§2.0)
 
@@ -1099,15 +1058,22 @@ complete) and not enough (it still could not guarantee a customer who over-inser
 would require raising C to (largest tender − cheapest product), or the guarantee
 breaks.
 
-## A.6 The operator model is earnings-based, not a sweep (§O.3, §O.5)
+## A.6 The operator owns all the cash; withdrawal empties the till (§O.3)
 
-The machine tracks revenue (Σ sale prices since the last collect); `collect` pays out
-that revenue and leaves the operator's loaded change as float. **Why:** it matches the
-operator's mental model ("collect what the machine earned, leave the change"), makes
-revenue observable, and avoids a footgun — a surplus-based "sweep" would claw back
-change the operator just loaded (load `$10` of nickels, collect, and `$9.80` comes
-straight back out, leaving the machine on a hair-trigger float). **Rejected:** the
-sweep model (collect everything above the bare minimum float).
+The operator can withdraw *all* the cash on hand in one action — reserve, loaded
+change, and sale proceeds alike — with no earnings/float distinction and no minimum
+kept back. **Why:** the operator owns the machine and the money in it; "take all the
+cash, then re-seed a fresh change bank" is what a real route operator does, and it is
+the simplest model to specify and reason about — there is one money figure (cash on
+hand), not two. The machine signals the *consequence* of an empty till (`EXACT CHANGE
+ONLY`, §7, refused change-owing sales, §6.1) rather than *preventing* the withdrawal;
+reloading change (§O.2) is the operator's remedy. **Rejected:** (1) an earnings-based
+`collect` that tracked revenue (Σ sale prices) and left loaded change as float —
+observable earnings, but two money concepts and a change-capability guard the operator
+did not ask for; (2) a surplus "sweep" that kept a minimum float — same footgun of
+clawing back just-loaded change. Both subordinated operator control to an
+idiot-proof default; this model trades that default for full control plus the
+responsibility to manage change.
 
 ## A.7 Stock is finite-only (§5)
 

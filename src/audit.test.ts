@@ -41,7 +41,6 @@ describe("VendingMachine — operator audit (O.4)", () => {
 
     expect(machine.cashOnHand()).toBe(machine.cashOnHand());
     expect(machine.stockOf(COLA)).toBe(machine.stockOf(COLA));
-    expect(machine.revenue()).toBe(machine.revenue());
     expect(machine.coinReturn()).toEqual([]); // nothing dispensed by reading
   });
 });
