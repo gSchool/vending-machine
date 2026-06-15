@@ -72,11 +72,14 @@ function snapshot() {
     coinReturn: machine.coinReturn().map(serializeCoin),
     cashOnHand: machine.cashOnHand(),
     coinInventory: machine.coinInventory(),
-    stock: {
-      cola: machine.stockOf(COLA),
-      chips: machine.stockOf(CHIPS),
-      candy: machine.stockOf(CANDY),
-    },
+    // The catalog is sourced from the domain Product objects so price and name
+    // have a single source of truth (product.ts); the UI supplies only icons.
+    catalog: Object.entries(PRODUCTS).map(([id, p]) => ({
+      id,
+      name: p.name,
+      priceCents: p.priceCents,
+      stock: machine.stockOf(p),
+    })),
   };
 }
 

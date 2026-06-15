@@ -479,11 +479,10 @@
   <div class="toast" id="toast"></div>
 
 <script>
-const PRODUCTS = {
-  cola:  { icon: "🥤", name: "Cola",  price: 100 },
-  chips: { icon: "🥔", name: "Chips", price: 50 },
-  candy: { icon: "🍬", name: "Candy", price: 65 },
-};
+// Icons are pure presentation and have no place in the domain model, so they
+// live here. Names and prices come from the server catalog (single source of
+// truth: product.ts).
+const PRODUCT_ICONS = { cola: "🥤", chips: "🥔", candy: "🍬" };
 const COINS = {
   nickel:  { label: "5¢",  sub: "nickel" },
   dime:    { label: "10¢", sub: "dime" },
@@ -500,13 +499,16 @@ let loadStaged = [];
 
 // --- Rendering --------------------------------------------------------------
 
-function renderShelf() {
-  $("shelf").innerHTML = Object.entries(PRODUCTS).map(([id, p]) => `
-    <button class="product" data-product="${id}" data-soldout="false">
-      <span class="icon">${p.icon}</span>
+// Built once from the first state we receive — the catalog (ids, names, prices)
+// is fixed for the machine's lifetime, only stock changes after that.
+let shelfBuilt = false;
+function renderShelf(catalog) {
+  $("shelf").innerHTML = catalog.map((p) => `
+    <button class="product" data-product="${p.id}" data-soldout="false">
+      <span class="icon">${PRODUCT_ICONS[p.id] || "📦"}</span>
       <span class="name">${p.name}</span>
-      <span class="price">${money(p.price)}</span>
-      <span class="stock" id="stock-${id}">— left</span>
+      <span class="price">${money(p.priceCents)}</span>
+      <span class="stock" id="stock-${p.id}">— left</span>
     </button>`).join("");
 
   document.querySelectorAll(".product").forEach((el) =>
@@ -514,6 +516,7 @@ function renderShelf() {
       if (el.dataset.soldout === "true") { flash(); return; }
       post("select-product", { product: el.dataset.product });
     }));
+  shelfBuilt = true;
 }
 
 function renderCoins() {
@@ -530,12 +533,14 @@ function render(state) {
   disp.textContent = state.display;
   disp.classList.remove("flash"); void disp.offsetWidth; disp.classList.add("flash");
 
-  for (const [id, count] of Object.entries(state.stock)) {
+  if (!shelfBuilt) renderShelf(state.catalog);
+
+  for (const { id, stock } of state.catalog) {
     const stockEl = $("stock-" + id);
     const prodEl = document.querySelector(`.product[data-product="${id}"]`);
     if (!stockEl || !prodEl) continue;
-    const soldOut = count === 0;
-    stockEl.textContent = soldOut ? "sold out" : `${count} left`;
+    const soldOut = stock === 0;
+    stockEl.textContent = soldOut ? "sold out" : `${stock} left`;
     prodEl.dataset.soldout = String(soldOut);
   }
 
@@ -633,10 +638,9 @@ document.querySelectorAll("[data-action]").forEach((el) =>
 
 // --- Boot -------------------------------------------------------------------
 
-renderShelf();
 renderCoins();
 renderStaged();
-refresh();
+refresh(); // builds the shelf from the catalog in the first state snapshot
 </script>
 </body>
 </html>
