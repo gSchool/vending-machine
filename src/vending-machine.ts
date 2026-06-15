@@ -145,9 +145,25 @@ export class VendingMachine {
     this.refundBalance();
   }
 
-  /** Coins made available in the coin return (change and rejected coins). */
+  /**
+   * Observes the coins waiting in the coin return — rejected coins, change,
+   * and refunds (§4). This is a non-destructive read: the coins stay in the
+   * return until the customer physically collects them (collectCoinReturn).
+   */
   coinReturn(): Coin[] {
-    return this.returnedCoins;
+    return [...this.returnedCoins];
+  }
+
+  /**
+   * Collects the coins from the coin return, emptying it. Models the customer
+   * physically scooping the tray: it hands back everything accumulated since the
+   * last collection and leaves the return empty. Observing (coinReturn) does not
+   * empty it; only this does.
+   */
+  collectCoinReturn(): Coin[] {
+    const coins = this.returnedCoins;
+    this.returnedCoins = [];
+    return coins;
   }
 
   // --- Operator interface ---------------------------------------------------
@@ -166,10 +182,13 @@ export class VendingMachine {
    * Sets a product's remaining stock to `count` (O.1). Restock *sets* rather
    * than adds, so the operator states the shelf's true contents. A count of 0
    * marks the product sold out; a positive count makes it available again.
-   * Refused with no effect while a customer has a balance pending (O.0.1).
+   * Refused with no effect while a customer has a balance pending (O.0.1), or if
+   * `count` is not a non-negative integer (O.1.3) — stock is a count of physical
+   * units, so a negative or fractional count is meaningless and is rejected.
    */
   restock(product: Product, count: number): void {
     if (!this.isIdle()) return;
+    if (!Number.isInteger(count) || count < 0) return;
     this.inventory.set(product, count);
   }
 

@@ -34,4 +34,20 @@ describe("VendingMachine — operator restock (O.1)", () => {
 
     expect(machine.display()).toBe("SOLD OUT");
   });
+
+  it("refuses a negative count, leaving stock unchanged (O.1.3)", () => {
+    const machine = new VendingMachine(new Map([[CHIPS, 5]]));
+
+    machine.restock(CHIPS, -3);
+
+    expect(machine.stockOf(CHIPS)).toBe(5);
+  });
+
+  it("refuses a fractional count, leaving stock unchanged (O.1.3)", () => {
+    const machine = new VendingMachine(new Map([[CHIPS, 5]]));
+
+    machine.restock(CHIPS, 2.5);
+
+    expect(machine.stockOf(CHIPS)).toBe(5);
+  });
 });

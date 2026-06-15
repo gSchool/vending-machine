@@ -114,4 +114,16 @@ describe("VendingMachine — one-shot display semantics (§8)", () => {
     expect(machine.display()).toBe("PRICE $1.00"); // still shown on next read
     expect(machine.display()).toBe("$0.25"); // then the balance
   });
+
+  it("an operator action does NOT disturb a pending one-shot (§8.5)", () => {
+    const machine = new VendingMachine(new Map([[CHIPS, 1]]));
+
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER); // $0.50, exact
+    machine.selectProduct(CHIPS); // THANK YOU pending, balance back to 0 (idle)
+
+    machine.restock(COLA, 5); // permitted (idle), must not clear the one-shot
+
+    expect(machine.display()).toBe("THANK YOU"); // still shown on the next read
+  });
 });

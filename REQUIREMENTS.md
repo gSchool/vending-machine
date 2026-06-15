@@ -8,6 +8,18 @@ confirm it matches intent.
 
 ## Revision history
 
+**2026-06-15 — Under-specification pass.** A second review closed gaps where
+behavior was assumed but never stated:
+
+- Model assumptions made explicit: actions are processed one at a time, and the
+  balance is unbounded (see Model assumptions).
+- Coin return split into observe (non-destructive) and collect (empties it);
+  the return accumulates until collected (§4.2, §4.3).
+- Restock rejects a count that is not a non-negative integer (O.1.3).
+- A partial collection leaves its remainder as revenue, visible on the next
+  audit; no separate signal is emitted (O.3.4).
+- Operator actions do not disturb a pending one-shot message (§8.5).
+
 **2026-06-12 — Consistency-and-completeness review.** A clause-by-clause pass
 resolved a set of contradictions and gaps; Appendix A records the rationale behind
 each decision. Notable changes:
@@ -47,6 +59,21 @@ The display strings (`INSERT COIN`, `THANK YOU`, `PRICE $x.xx`, `SOLD OUT`,
 `EXACT CHANGE ONLY`) and the currency format (`$0.05`) are part of the contract
 and SHALL appear exactly as written.
 
+## Model assumptions
+
+These hold throughout and are not restated per clause:
+
+- **Actions are processed one at a time.** The machine handles each action
+  (insert, select, return, read, and each operator action) to completion before
+  the next begins; there is no concurrent or interleaved action. Together with
+  the read-driven display (§8, Appendix A.4), this is what makes every scenario
+  reproducible: the machine's state is a pure function of the *sequence* of
+  actions, with no dependence on timing or overlap.
+- **The balance is unbounded.** There is no maximum balance and no "acceptor
+  full" condition; a customer may insert any number of valid coins, and each adds
+  its value to the balance (§1.1). A real machine has a finite coin hopper; that
+  limit is deliberately outside this model.
+
 **Scenario shorthand.** In the Gherkin acceptance criteria, "*X* is purchased" or
 "buys *X*" means the customer inserts enough coins and selects *X* so the sale
 completes; "coins totaling $N are inserted" fixes only the total, not the
@@ -61,7 +88,10 @@ output. Nothing else is exposed to the customer.
 - **Select a product** — request one of the products.
 - **Press return-coins** — ask for the inserted money back.
 - **Read the display** — observe the machine's current message (see §8).
-- **Observe the coin return** — collect coins the machine has made available.
+- **Observe the coin return** — look at the coins the machine has made
+  available, without taking them (a non-destructive read; see §4.2).
+- **Collect the coin return** — physically take the coins from the return,
+  emptying it (§4.3).
 
 The display is read on demand. Some outputs are **one-shot**: they appear on the
 next read only, then the display reverts (see §8). The machine's starting
@@ -92,7 +122,8 @@ configured starting count begins sold out (zero).
   is the whole of the available change.
 - **Coin return** — where coins are made available to the customer. It
   accumulates everything the machine hands back (rejected coins, change, and
-  refunds) until collected.
+  refunds) and holds it until the customer collects it (§4.3). Observing the
+  return (§4.2) only looks; it does not empty it.
 - **Resting state** — balance is zero and no one-shot message is pending.
 - **Products** — cola (`$1.00`), chips (`$0.50`), candy (`$0.65`).
 - **Change guarantee ceiling (C)** — the most change the machine guarantees it
@@ -338,6 +369,21 @@ Feature: Make Change
 totaling the current balance in the coin return, reset the balance to zero, and
 revert to the resting state display.
 
+4.2. WHEN the coin return is observed, the machine SHALL report the coins
+currently waiting there without removing them; observing is non-destructive, so
+repeated observations report the same coins until they are collected (§4.3).
+
+4.3. WHEN the coin return is collected, the machine SHALL hand back every coin
+waiting there and leave the coin return empty; a subsequent collection (with no
+coins added in between) hands back nothing.
+
+> The coin return accumulates everything the machine hands back — rejected coins
+> (§1.3), change (§3.1), and refunds (§4.1, §6.1) — and holds it until collected.
+> Observing and collecting are distinct: a customer can look at the tray as often
+> as they like without disturbing it (§4.2), and collecting empties it in one
+> motion (§4.3). This mirrors a physical return slot, where the coins sit visibly
+> in the tray until scooped out.
+
 ### Acceptance criteria
 
 ```gherkin
@@ -357,6 +403,19 @@ Feature: Return Coins
     When the return-coins action is performed
     Then no coins are added to the coin return
     And the display shows "INSERT COIN"
+
+  Scenario: Observing the coin return does not empty it
+    Given a machine with $0.35 waiting in the coin return
+    When the coin return is observed twice
+    Then both observations report $0.35
+    And the coins are still in the coin return
+
+  Scenario: Collecting empties the coin return
+    Given a machine with $0.35 waiting in the coin return
+    When the coin return is collected
+    Then $0.35 is handed to the customer
+    And the coin return is empty
+    And collecting again hands back nothing
 ```
 
 ---
@@ -553,6 +612,15 @@ while a one-shot message is pending, the machine SHALL discard the pending
 message; the next display read then reflects the resulting balance or resting
 state (§1.2, §4.1). An invalid coin, rejected with no change to the balance
 (§1.3), does not disturb a pending message.
+
+8.5. An operator action (restock, load change, collect, audit) SHALL NOT disturb a
+pending one-shot message. A one-shot can be pending while the balance is zero — for
+example `THANK YOU` after a sale, before it is read — and the machine is then idle,
+so operator actions are permitted (§O.0); they nonetheless leave the pending message
+intact, and a later customer read still shows it. Only the customer actions in §8.4,
+or a read (§8.1), or a superseding one-shot (§8.3) clear it. (The customer display is
+not part of the operator interface, so this is a statement about what the *next
+customer read* shows, not anything the operator observes.)
 
 > Reading the display consumes a waiting one-shot message: it appears on one
 > read, and the following read reflects the underlying balance or resting state.
@@ -755,9 +823,15 @@ O.1.2. WHEN a product previously at zero stock is restocked to a positive count,
 the machine SHALL once again dispense that product on a valid purchase
 (§2.1), and SHALL no longer show `SOLD OUT` for it (§5.1).
 
+O.1.3. IF a restock is attempted with a count that is not a non-negative integer
+(negative, or fractional), THEN the machine SHALL refuse it, leaving that
+product's remaining stock unchanged. Remaining stock is a count of physical units
+(see glossary), so only a non-negative integer is meaningful.
+
 > Restock **sets** the count rather than adding to it, so the operator states the
 > shelf's true contents after refilling. Setting a count of zero is permitted and
-> marks the product sold out.
+> marks the product sold out. A negative or fractional count is not a possible
+> shelf contents, so it is rejected rather than coerced (O.1.3).
 
 ### Acceptance criteria
 
@@ -777,6 +851,16 @@ Feature: Restock products
     Given a machine where chips has 2 remaining
     When the operator restocks chips to 10
     Then chips has 10 remaining
+
+  Scenario Outline: An invalid count is refused
+    Given a machine where chips has 5 remaining
+    When the operator restocks chips to <count>
+    Then chips still has 5 remaining
+
+    Examples:
+      | count |
+      | -3    |
+      | 2.5   |
 ```
 
 ---
@@ -836,12 +920,24 @@ O.3.3. Collecting SHALL conserve money: the value handed to the operator equals
 the value of coins removed, and the revenue decreases by exactly that amount
 (§3.2).
 
+O.3.4. WHEN a collection pays out less than the full revenue because of the
+change-capability guard (O.3.2), the retained remainder SHALL remain as revenue
+and SHALL be visible to the operator on the next audit (§O.4). The machine emits
+no separate "partial collection" signal; the audited revenue *is* the record of
+what was held back, and a later collection (after the float is replenished by
+loading change, §O.2) pays it out.
+
 > Collect pays the operator their earnings and nothing more: the starting reserve
 > and any loaded change stay in the machine as change float, so the float is
 > operator-controlled — load more change and more stays. Because earnings are paid
 > largest-coins-first (§3.3) they come out mostly as quarters, leaving the small
 > coins that make change; only when the earnings are themselves tied up in
 > float-critical small coins is any revenue left behind (O.3.2).
+
+> A partial collection is not an error and raises no flag — the operator sees it by
+> comparing the cash handed out against the revenue reported by a follow-up audit
+> (O.3.4). Loading more change (§O.2) frees the held-back earnings for a later
+> collect.
 
 ### Acceptance criteria
 

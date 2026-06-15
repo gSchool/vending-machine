@@ -36,4 +36,32 @@ describe("VendingMachine — return coins", () => {
     expect(totalCents(machine.coinReturn())).toBe(0); // nothing to return
     expect(machine.display()).toBe("INSERT COIN");
   });
+
+  it("observing the coin return does not empty it; collecting does (§4)", () => {
+    const machine = new VendingMachine();
+
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(DIME);
+    machine.returnCoins();
+
+    // Observing is non-destructive: repeated reads report the same coins.
+    expect(totalCents(machine.coinReturn())).toBe(35);
+    expect(totalCents(machine.coinReturn())).toBe(35);
+
+    // Collecting hands the coins back and empties the return.
+    expect(totalCents(machine.collectCoinReturn())).toBe(35);
+    expect(totalCents(machine.coinReturn())).toBe(0);
+    expect(totalCents(machine.collectCoinReturn())).toBe(0); // nothing left
+  });
+
+  it("accumulates across actions until collected (§4)", () => {
+    const machine = new VendingMachine();
+
+    machine.insertCoin(QUARTER);
+    machine.returnCoins(); // 25¢ in the return
+    machine.insertCoin(DIME);
+    machine.returnCoins(); // another 10¢ — accumulates, not replaced
+
+    expect(totalCents(machine.collectCoinReturn())).toBe(35);
+  });
 });
