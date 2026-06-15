@@ -42,9 +42,9 @@ describe("VendingMachine — change ceiling C = $0.20 (§7)", () => {
   });
 
   it("treats C as inclusive: a float that makes up to 15¢ but not 20¢ still warns", () => {
-    // Three nickels + a dime make 5,10,15 but not 20. 20¢ is at the ceiling and
-    // is required, so the machine must warn.
-    const machine = new VendingMachine(new Map(), [NICKEL, NICKEL, NICKEL, DIME]);
+    // A nickel + a dime make 5, 10, and 15 but cannot make 20¢. 20¢ is at the
+    // ceiling C and is required, so the machine must warn.
+    const machine = new VendingMachine(new Map(), [NICKEL, DIME]);
 
     expect(machine.display()).toBe("EXACT CHANGE ONLY");
   });

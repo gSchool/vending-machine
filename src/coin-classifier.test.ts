@@ -15,9 +15,22 @@ const arbitraryCoin: fc.Arbitrary<Coin> = fc.record({
   diameterMm: fc.double({ min: 0, max: 100, noNaN: true }),
 });
 
-const matchesAValidCoin = (c: Coin): boolean =>
+/** The ±tolerances the classifier accepts within (§9). */
+const WEIGHT_TOLERANCE_G = 0.15;
+const DIAMETER_TOLERANCE_MM = 0.15;
+
+/**
+ * Whether a slug falls within SOME denomination's acceptance window — weight and
+ * diameter both within tolerance of the same coin (§9). A slug outside every
+ * window must be rejected.
+ */
+const FLOAT_EPSILON = 1e-9; // mirror the classifier's boundary slack
+
+const fallsInSomeWindow = (c: Coin): boolean =>
   VALID_COINS.some(
-    ({ coin }) => c.weightGrams === coin.weightGrams && c.diameterMm === coin.diameterMm,
+    ({ coin }) =>
+      Math.abs(c.weightGrams - coin.weightGrams) <= WEIGHT_TOLERANCE_G + FLOAT_EPSILON &&
+      Math.abs(c.diameterMm - coin.diameterMm) <= DIAMETER_TOLERANCE_MM + FLOAT_EPSILON,
   );
 
 describe("valueOf (property-based)", () => {
@@ -29,10 +42,10 @@ describe("valueOf (property-based)", () => {
     );
   });
 
-  it("rejects any slug that is not an exact match for a valid coin", () => {
+  it("rejects any slug that falls outside every acceptance window (§9)", () => {
     fc.assert(
       fc.property(
-        arbitraryCoin.filter((c) => !matchesAValidCoin(c)),
+        arbitraryCoin.filter((c) => !fallsInSomeWindow(c)),
         (slug) => {
           expect(valueOf(slug)).toBeNull();
         },

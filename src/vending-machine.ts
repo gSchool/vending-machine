@@ -5,8 +5,14 @@ import { COLA, CHIPS, CANDY } from "./product";
 import { valueOf } from "./coin-classifier";
 import { CoinBank, VALUES } from "./coin-bank";
 
-/** The highest product price (cents); change may be owed up to just under this. */
-const MAX_PRICE_CENTS = Math.max(COLA.priceCents, CHIPS.priceCents, CANDY.priceCents);
+/**
+ * The change guarantee ceiling C (§7, Appendix A.5): the most change a customer
+ * can be owed who stops inserting once the balance reaches the price — the
+ * largest accepted coin (25¢) minus the smallest (5¢). Derived from the coins,
+ * not the prices. The machine is "change-capable" when it can make every 5¢ step
+ * from 5¢ up to and including C.
+ */
+const CHANGE_CEILING_CENTS = 20; // 25¢ (largest coin) − 5¢ (smallest coin)
 
 /**
  * A default change reserve with plenty of every denomination, so a machine
@@ -23,11 +29,13 @@ export class VendingMachine {
   private pendingMessage: string | null = null;
   private returnedCoins: Coin[] = [];
   private bank: CoinBank;
+  /** Uncollected earnings: Σ prices of sales since the last collect (§O.5). */
+  private revenueCents: number = 0;
 
   /**
    * Inventory maps a product to its remaining stock. A product absent from the
-   * map is treated as in stock; only an explicit count of 0 is sold out.
-   * The change reserve seeds the machine's coin bank.
+   * map begins sold out — stock is finite-only, and an unconfigured product
+   * starts at zero (§5, Appendix A.7). The change reserve seeds the coin bank.
    */
   constructor(
     private inventory: Map<Product, number> = new Map(),
@@ -49,12 +57,14 @@ export class VendingMachine {
   }
 
   /**
-   * Safe rule: the reserve must be able to produce every change amount that
-   * could ever be owed — i.e. each 5-cent step from 5 up to the largest price.
-   * If any is unmakeable, the machine warns EXACT CHANGE ONLY.
+   * Change-capable (§7): the machine can make every 5-cent step from 5¢ up to
+   * and including the change guarantee ceiling C ($0.20). A customer who stops
+   * once the balance reaches the price is owed at most C, so a change-capable
+   * machine never surprises such a customer. If any step is unmakeable, the
+   * machine warns EXACT CHANGE ONLY at rest.
    */
   private canMakeChange(): boolean {
-    for (let amount = 5; amount < MAX_PRICE_CENTS; amount += 5) {
+    for (let amount = 5; amount <= CHANGE_CEILING_CENTS; amount += 5) {
       if (!this.bank.canMake(amount)) {
         return false;
       }
@@ -65,15 +75,20 @@ export class VendingMachine {
   insertCoin(coin: Coin): void {
     const value = valueOf(coin);
     if (value !== null) {
+      // A valid coin is a customer action: it clears any pending one-shot
+      // message, so the next read reflects the new balance (§8.4).
+      this.pendingMessage = null;
       this.balance += value;
       this.bank.add(coin);
     } else {
+      // An invalid coin leaves the balance unchanged, so it does not disturb a
+      // pending message (§8.4); it passes straight to the coin return (§1.3).
       this.returnedCoins.push(coin);
     }
   }
 
   selectProduct(product: Product): void {
-    if (this.inventory.get(product) === 0) {
+    if (this.isSoldOut(product)) {
       this.pendingMessage = "SOLD OUT";
       return;
     }
@@ -93,7 +108,17 @@ export class VendingMachine {
     this.returnedCoins.push(...this.bank.withdraw(changeOwed));
     this.balance = 0;
     this.decrementStock(product);
+    this.revenueCents += product.priceCents; // the sale's earnings (§O.5.1)
     this.pendingMessage = "THANK YOU";
+  }
+
+  /**
+   * Whether a product is sold out (§5). Stock is finite-only: a product absent
+   * from the inventory map is unconfigured and begins sold out (Appendix A.7),
+   * as is any product whose remaining count has reached zero.
+   */
+  private isSoldOut(product: Product): boolean {
+    return this.stockOf(product) === 0;
   }
 
   /**
@@ -114,6 +139,9 @@ export class VendingMachine {
   }
 
   returnCoins(): void {
+    // Returning coins is a customer action: it clears any pending one-shot
+    // message, so the next read shows the resting state (§8.4).
+    this.pendingMessage = null;
     this.refundBalance();
   }
 
@@ -146,50 +174,50 @@ export class VendingMachine {
   }
 
   /**
-   * Collects the surplus revenue (O.3): hands back as many coins as possible
-   * while keeping the machine change-capable (§7), and retains that float.
+   * Collects the operator's earnings (§O.3): hands back coins totaling the
+   * current revenue, drawn largest-coin-first (§3.3), and reduces revenue by the
+   * value handed back. The change float — the starting reserve plus loaded
+   * change — stays in the machine; collect never returns it.
    *
-   * Strategy: try to remove coins one at a time, largest value first, keeping a
-   * removal only if the bank stays change-capable. This never breaks capability,
-   * so a machine that could make change still can (O.3.2). If the machine is not
-   * change-capable to begin with there is no surplus over a capable float, so
-   * nothing is collected (O.3.3).
+   * Change-capability guard (§O.3.2): if the machine is change-capable, it never
+   * pays out so much that it could no longer make every 5¢ step up to C — it
+   * holds back the float-critical small coins, retaining their value as revenue.
+   * If the machine was already not change-capable, the guard does not apply and
+   * the full revenue is paid out.
    *
-   * This greedy removal guarantees capability is preserved and money is
-   * conserved (both property-tested), but it is NOT proven to collect the
-   * maximum possible value — only a capability-safe amount. A provably-maximal
-   * collection would search retained sets; the spec asks only that the machine
-   * stay change-capable, so the simpler greedy pass suffices.
+   * Strategy: remove coins one at a time, largest value first, up to the revenue
+   * owed, keeping each removal only while it does not strand a previously
+   * change-capable machine. Money is conserved: revenue falls by exactly the
+   * value handed back (§O.3.3).
    *
    * Refused (collects nothing) while a customer has a balance pending (O.0.1).
    */
   collect(): Coin[] {
     if (!this.isIdle()) return [];
+    const guardCapability = this.canMakeChange();
     const collected: Coin[] = [];
+    let owed = this.revenueCents;
+
     for (const value of VALUES) {
-      while (this.bank.countOf(value) > 0) {
+      while (owed >= value && this.bank.countOf(value) > 0) {
         const coin = this.bank.removeOne(value);
-        if (this.canMakeChange()) {
-          collected.push(coin);
-        } else {
-          this.bank.add(coin); // putting it back would break change-making — keep it
+        if (guardCapability && !this.canMakeChange()) {
+          this.bank.add(coin); // would strand the float — keep it, leave as revenue
           break;
         }
+        collected.push(coin);
+        owed -= value;
       }
     }
+
+    const handedBack = collected.reduce((sum, coin) => sum + (valueOf(coin) ?? 0), 0);
+    this.revenueCents -= handedBack; // conserve: revenue falls by exactly the payout
     return collected;
   }
 
-  /**
-   * The value the operator could collect right now (O.4), without changing
-   * anything. Computed by running the very same selection `collect` uses and
-   * then putting the coins back, so it is a faithful, side-effect-free predictor
-   * of what `collect` would hand back.
-   */
-  collectableSurplus(): number {
-    const surplus = this.collect();
-    this.loadChange(surplus); // restore: this read must not mutate state
-    return surplus.reduce((sum, coin) => sum + (valueOf(coin) ?? 0), 0);
+  /** The operator's uncollected earnings, in cents (§O.4, §O.5). Read-only. */
+  revenue(): number {
+    return this.revenueCents;
   }
 
   /**
@@ -216,12 +244,12 @@ export class VendingMachine {
   }
 
   /**
-   * Remaining stock of a product (O.4). A product absent from the inventory map
-   * has no configured limit and is always in stock, reported here as Infinity
-   * (consistent with §5: only an explicit 0 is sold out).
+   * Remaining stock of a product (O.4). Stock is finite-only: a product absent
+   * from the inventory map is unconfigured and begins sold out, reported here as
+   * zero (§5, Appendix A.7).
    */
   stockOf(product: Product): number {
-    return this.inventory.get(product) ?? Infinity;
+    return this.inventory.get(product) ?? 0;
   }
 
   /** Converts a balance in cents into US dollar notation, e.g. 5 -> "$0.05". */
