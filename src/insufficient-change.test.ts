@@ -22,6 +22,18 @@ describe("VendingMachine — refuse sale when change cannot be made", () => {
     expect(totalCents(machine.coinReturn())).toBe(100);
   });
 
+  it("leaves the product's stock unchanged when it refuses for lack of change (§6.1)", () => {
+    const machine = new VendingMachine(new Map([[CANDY, 1]]), []);
+
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER);
+    machine.selectProduct(CANDY); // refused: 35c change unmakeable
+
+    expect(machine.stockOf(CANDY)).toBe(1); // not dispensed, stock untouched
+  });
+
   it("displays EXACT CHANGE ONLY when it refuses for lack of change", () => {
     const machine = new VendingMachine(new Map([[CANDY, 1]]), []);
 

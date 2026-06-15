@@ -58,6 +58,36 @@ describe("VendingMachine — operator collect (§O.3)", () => {
     expect(machine.display()).toBe("INSERT COIN"); // still change-capable
   });
 
+  it("pays only part of the revenue when the rest is locked in float-critical coins (§O.3.2)", () => {
+    // Reserve {quarter, 2 dimes, nickel} = 60¢, change-capable: it can make every
+    // 5¢ step up to C ($0.20). The dimes and nickel are float-critical — removing
+    // them breaks that ability — while the quarter can leave freely.
+    const reserve = [QUARTER, DIME, DIME, NICKEL];
+    const machine = new VendingMachine(new Map([[CHIPS, 2]]), reserve);
+
+    // Two 50¢ chips sales, each paid in five dimes (exact, no change owed). The
+    // dimes land in the bank, so revenue climbs to 100¢ while the quarter count
+    // stays at one — the only quarter available to pay that revenue.
+    for (let sale = 0; sale < 2; sale++) {
+      for (let d = 0; d < 5; d++) machine.insertCoin(DIME);
+      machine.selectProduct(CHIPS);
+      expect(machine.display()).toBe("THANK YOU");
+    }
+    expect(machine.revenue()).toBe(100);
+    expect(machine.display()).toBe("INSERT COIN"); // change-capable
+
+    const collected = machine.collect();
+
+    // Largest-first hands out the lone quarter, then dimes only while the machine
+    // stays change-capable — it must retain enough dimes plus the nickel to make
+    // every step up to C. So it cannot pay the full 100¢: the guard holds the
+    // float-critical remainder back as revenue (§O.3.2).
+    expect(totalCents(collected)).toBeLessThan(100);
+    expect(machine.revenue()).toBe(100 - totalCents(collected));
+    expect(machine.revenue()).toBeGreaterThan(0); // the guard genuinely bit
+    expect(machine.display()).toBe("INSERT COIN"); // stayed change-capable
+  });
+
   it("never makes the machine unable to make change if it was capable before (§O.3.2, property)", () => {
     const reserveCounts = fc.record({
       quarters: fc.integer({ min: 0, max: 8 }),

@@ -27,4 +27,13 @@ describe("VendingMachine — return coins", () => {
 
     expect(machine.display()).toBe("INSERT COIN");
   });
+
+  it("returns nothing and stays at rest when no coins are inserted (§4.1)", () => {
+    const machine = new VendingMachine();
+
+    machine.returnCoins();
+
+    expect(totalCents(machine.coinReturn())).toBe(0); // nothing to return
+    expect(machine.display()).toBe("INSERT COIN");
+  });
 });

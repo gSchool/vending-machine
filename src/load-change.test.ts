@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { VendingMachine } from "./vending-machine";
+import { CANDY } from "./product";
 import { QUARTER, DIME, NICKEL } from "./coin";
 
 describe("VendingMachine — operator load change (O.2)", () => {
@@ -17,6 +18,23 @@ describe("VendingMachine — operator load change (O.2)", () => {
     // The machine becomes change-capable (§7) and resumes INSERT COIN.
     machine.loadChange([...Array(3).fill(DIME)]);
     expect(machine.display()).toBe("INSERT COIN");
+  });
+
+  it("makes loaded coins available as change for a sale (O.2.1)", () => {
+    // Empty float: $0.75 toward $0.65 candy owes 35¢, which three quarters alone
+    // cannot form. Loading a dime makes 35¢ (a quarter + the dime) reachable, so
+    // the sale that was otherwise unmakeable now completes — proof the loaded
+    // coin entered the change pool.
+    const machine = new VendingMachine(new Map([[CANDY, 1]]), []);
+    machine.loadChange([DIME]);
+
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER);
+    machine.insertCoin(QUARTER); // $0.75
+    machine.selectProduct(CANDY); // owes 35¢ -> quarter + the loaded dime
+
+    expect(machine.display()).toBe("THANK YOU"); // sale completes
+    expect(machine.stockOf(CANDY)).toBe(0); // dispensed
   });
 
   it("increases the coins on hand by the loaded value, conserving it (O.2.3)", () => {

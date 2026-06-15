@@ -22,6 +22,15 @@ describe("VendingMachine — sold out", () => {
     expect(machine.display()).toBe("$0.25");
   });
 
+  it("reverts to the resting state after SOLD OUT when no coins are inserted (§5.2)", () => {
+    const machine = new VendingMachine(new Map([[COLA, 0]])); // ample reserve
+
+    machine.selectProduct(COLA);
+
+    expect(machine.display()).toBe("SOLD OUT");
+    expect(machine.display()).toBe("INSERT COIN"); // empty balance -> resting state
+  });
+
   it("becomes sold out after the last item is purchased", () => {
     const machine = new VendingMachine(new Map([[COLA, 1]]));
 
