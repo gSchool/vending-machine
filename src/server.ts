@@ -7,6 +7,7 @@ import type { Coin } from "./coin";
 import type { Product } from "./product";
 import { NICKEL, DIME, QUARTER } from "./coin";
 import { COLA, CHIPS, CANDY } from "./product";
+import { valueOf } from "./coin-classifier";
 import { VendingMachine } from "./vending-machine";
 
 /**
@@ -46,6 +47,18 @@ const machine = new VendingMachine(
   ]),
 );
 
+// --- Serialization ----------------------------------------------------------
+
+/**
+ * Classification is a domain concern, so the server — not the browser — assigns
+ * each coin its recognized value before sending it out. The UI receives
+ * `{ value }` (cents, or null when unrecognized) and never sees coin physics.
+ * This keeps `valueOf` the single source of truth for what a coin is worth.
+ */
+function serializeCoin(coin: Coin): { value: number | null } {
+  return { value: valueOf(coin) };
+}
+
 // --- State snapshot ---------------------------------------------------------
 
 /**
@@ -56,7 +69,7 @@ const machine = new VendingMachine(
 function snapshot() {
   return {
     display: machine.display(),
-    coinReturn: machine.coinReturn(),
+    coinReturn: machine.coinReturn().map(serializeCoin),
     cashOnHand: machine.cashOnHand(),
     coinInventory: machine.coinInventory(),
     stock: {
@@ -89,7 +102,7 @@ const ACTIONS: Record<string, Handler> = {
     machine.selectProduct(product);
   },
   "return-coins": () => machine.returnCoins(),
-  "collect-coin-return": () => ({ collected: machine.collectCoinReturn() }),
+  "collect-coin-return": () => ({ collected: machine.collectCoinReturn().map(serializeCoin) }),
 
   // Operator actions
   "restock": (body) => {
@@ -105,7 +118,7 @@ const ACTIONS: Record<string, Handler> = {
     });
     machine.loadChange(coins);
   },
-  "withdraw-all": () => ({ withdrawn: machine.withdrawAll() }),
+  "withdraw-all": () => ({ withdrawn: machine.withdrawAll().map(serializeCoin) }),
 };
 
 class HttpError extends Error {

@@ -490,7 +490,7 @@ const COINS = {
   quarter: { label: "25¢", sub: "quarter" },
   slug:    { label: "?",   sub: "slug" },
 };
-// Map a coin's physical value (cents) back to a chip label for the return tray.
+// Map a server-assigned coin value (cents) to a chip label for the return tray.
 const VALUE_LABEL = { 5: "5¢", 10: "10¢", 25: "25¢" };
 
 const $ = (id) => document.getElementById(id);
@@ -539,12 +539,12 @@ function render(state) {
     prodEl.dataset.soldout = String(soldOut);
   }
 
-  // Coin return tray: each returned coin rendered as a chip (by recognized value).
+  // Coin return tray: each returned coin rendered as a chip. The server already
+  // classified it — the UI just reads the value it was given.
   const tray = $("tray");
   let total = 0;
   tray.innerHTML = state.coinReturn.map((coin) => {
-    const v = recognize(coin);
-    if (v) { total += v; return `<span class="chip">${VALUE_LABEL[v]}</span>`; }
+    if (coin.value) { total += coin.value; return `<span class="chip">${VALUE_LABEL[coin.value]}</span>`; }
     return `<span class="chip unknown">?</span>`;
   }).join("");
   $("tray-total").textContent = total ? money(total) : "";
@@ -557,16 +557,6 @@ function render(state) {
       <span class="face ${d.count === 0 ? "empty" : ""}">${VALUE_LABEL[d.value] || d.value + "¢"}</span>
       <span class="cnt ${d.count === 0 ? "zero" : ""}">×${d.count}</span>
     </div>`).join("");
-}
-
-// Mirror the server-side classifier closely enough to label tray chips. The
-// server is authoritative for behavior; this is presentation only.
-function recognize(coin) {
-  const within = (a, b) => Math.abs(a - b) <= 0.16;
-  if (within(coin.weightGrams, 5.0) && within(coin.diameterMm, 21.21)) return 5;
-  if (within(coin.weightGrams, 2.268) && within(coin.diameterMm, 17.91)) return 10;
-  if (within(coin.weightGrams, 5.67) && within(coin.diameterMm, 24.26)) return 25;
-  return null;
 }
 
 function flash() {
@@ -633,7 +623,7 @@ $("load-btn").addEventListener("click", async () => {
 $("withdraw-btn").addEventListener("click", async () => {
   const data = await post("withdraw-all", {});
   if (data && data.withdrawn) {
-    const sum = data.withdrawn.reduce((s, c) => s + (recognize(c) || 0), 0);
+    const sum = data.withdrawn.reduce((s, c) => s + (c.value || 0), 0);
     toast(sum ? "withdrew " + money(sum) : "nothing to withdraw");
   }
 });
