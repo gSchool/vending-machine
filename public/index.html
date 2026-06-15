@@ -132,8 +132,11 @@
     /* ghost segments behind the live text */
     position: relative;
   }
-  .display.flash { animation: flash 0.18s ease; }
-  @keyframes flash { from { filter: brightness(2); } to { filter: none; } }
+  .display.flash { animation: flash 0.35s ease; }
+  @keyframes flash {
+    0%   { filter: brightness(2.6); text-shadow: 0 0 10px var(--amber-glow), 0 0 28px rgba(255,149,0,0.9); }
+    100% { filter: brightness(1);   text-shadow: 0 0 6px var(--amber-glow), 0 0 16px rgba(255,149,0,0.5); }
+  }
 
   .section-label {
     font-size: 11px;
@@ -529,9 +532,8 @@ function renderCoins() {
 }
 
 function render(state) {
-  const disp = $("display");
-  disp.textContent = state.display;
-  disp.classList.remove("flash"); void disp.offsetWidth; disp.classList.add("flash");
+  $("display").textContent = state.display;
+  flash();
 
   if (!shelfBuilt) renderShelf(state.catalog);
 
