@@ -55,3 +55,25 @@ TypeScript, ESM. Tests run with [vitest](https://vitest.dev/) and
 npm test          # run the test suite
 npx vitest run    # single pass, no watch
 ```
+
+Web UI
+------
+
+A small web page exposes the whole machine — customer actions (insert coins,
+select a product, return/take coins) and the operator service panel (restock,
+load change, withdraw all cash, and a cash-on-hand readout that breaks the coins
+on hand down into an exact count per denomination).
+
+```sh
+npm start         # serves http://localhost:3000 (set PORT to change)
+```
+
+`src/server.ts` is a thin, zero-dependency Node HTTP shell around the pure
+`VendingMachine` core: it holds one machine instance — the single source of
+truth, so state survives a page refresh — and maps each domain method to a JSON
+endpoint under `/api/`. The browser page in `public/` calls those endpoints and
+re-renders from the state snapshot each action returns. The core does no I/O;
+the server is the only I/O. It runs the TypeScript directly via Node's
+type-stripping (`--experimental-transform-types`) plus a tiny resolve hook
+(`src/ts-resolve.mts`) that maps the source's extensionless imports to `.ts` —
+so there is no build step.

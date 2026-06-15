@@ -6,7 +6,8 @@
   "author": "JB-Tellez",
   "type": "module",
   "scripts": {
-    "test": "vitest"
+    "test": "vitest",
+    "start": "node --experimental-transform-types --import ./src/ts-resolve.mts src/server.ts"
   },
   "devDependencies": {
     "fast-check": "^4.8.0",
