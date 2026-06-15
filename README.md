@@ -12,9 +12,38 @@ Documentation
 - **[REQUIREMENTS.md](REQUIREMENTS.md)** — the authoritative specification of
   what the machine does, as observable behavior (EARS requirements with Gherkin
   acceptance criteria). Start here to understand or rebuild the product.
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how this implementation is built: the
-  design, key invariants, the change-making algorithm, the test strategy, and
-  known gaps.
+  **Appendix A** records the rationale behind every non-obvious design decision.
+
+The "how" lives next to the code: each module under `src/` carries doc-comments
+that cite the spec sections they implement.
+
+Design at a glance
+------------------
+
+A pure **domain core** (`VendingMachine`) surrounded by small, single-purpose
+modules it delegates to. Nothing in the core does I/O — it is driven by method
+calls (`insertCoin`, `selectProduct`, `returnCoins`, and the operator actions)
+and observed through queries (`display`, `coinReturn`, `revenue`, …), so the
+whole thing is unit- and property-testable without test doubles.
+
+| File | Responsibility |
+|------|----------------|
+| `vending-machine.ts` | The domain core: customer balance, display state machine, inventory, coin bank, and uncollected revenue. Orchestrates all customer *and* operator behavior. |
+| `coin.ts` | The `Coin` type (`{ weightGrams, diameterMm }`) and the accepted-coin specs (`NICKEL`, `DIME`, `QUARTER`). |
+| `coin-classifier.ts` | `valueOf(coin)` — assigns a cents value by physical properties using tolerance windows (§9), or `null` if unrecognized. |
+| `coin-bank.ts` | `CoinBank` — the coin reserve as per-denomination counts. Owns all change math (`add`, `total`, `canMake`, `withdraw`, …). |
+| `product.ts` | The `Product` type and the three products (cola $1.00, chips $0.50, candy $0.65). |
+
+Two load-bearing properties, both pinned by `fast-check` property tests:
+
+- **Conservation of money.** One coin bank: inserted coins are deposited, every
+  payout (change, refund, return, collect) is a withdrawal. Over any sequence of
+  operations the coin return equals total inserted minus total dispensed
+  (`conservation.test.ts`).
+- **Largest-coin-first change.** `CoinBank.withdraw` uses a backtracking search
+  over denominations (greedy can fail on a finite reserve) that spends the
+  largest coins it can, retaining small coins for future change. Proven against a
+  brute-force oracle (`withdraw-optimal.test.ts`, `coin-bank.test.ts`).
 
 Build & run
 -----------
