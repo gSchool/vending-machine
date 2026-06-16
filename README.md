@@ -71,12 +71,47 @@ on hand down into an exact count per denomination).
 npm start         # serves http://localhost:3000 (set PORT to change)
 ```
 
-`src/server.ts` is a thin, zero-dependency Node HTTP shell around the pure
-`VendingMachine` core: it holds one machine instance — the single source of
-truth, so state survives a page refresh — and maps each domain method to a JSON
-endpoint under `/api/`. The browser page in `public/` calls those endpoints and
-re-renders from the state snapshot each action returns. The core does no I/O;
-the server is the only I/O. It runs the TypeScript directly via Node's
-type-stripping (`--experimental-transform-types`) plus a tiny resolve hook
-(`src/ts-resolve.mts`) that maps the source's extensionless imports to `.ts` —
-so there is no build step.
+`src/server.ts` is a thin, zero-dependency Node HTTP shell around
+`src/machine-session.ts` — the I/O-free application surface: one machine
+instance (the single source of truth, so state survives a page refresh), the
+state snapshot the UI renders, and the action map keyed by name. The server maps
+each action to a JSON endpoint under `/api/`; the browser page in `public/`
+calls those endpoints and re-renders from the snapshot each action returns. The
+core does no I/O; the server is the only I/O. It runs the TypeScript directly via
+Node's type-stripping (`--experimental-transform-types`) plus a tiny resolve hook
+(`src/ts-resolve.mts`) that maps the source's extensionless imports to `.ts` — so
+running the server needs no build step.
+
+Static build (deploy)
+---------------------
+
+The page is transport-agnostic: it only ever touches `window.VM_API`, never a
+URL. In dev that contract is backed by an HTTP adapter (`public/app.js`) that
+calls the `/api/` server. For a server-free deploy (e.g. GitHub Pages), one build
+step swaps in a different backing:
+
+```sh
+npm run build:static   # esbuild -> dist/ (index.html + a bundled app.js)
+npm run serve:static   # serve dist/ on http://localhost:4173
+```
+
+`src/web-app.ts` bundles the whole `MachineSession` into the page and satisfies
+the same `VM_API` contract in-process — so `index.html` and its render layer are
+byte-identical in both modes, and the snapshot shape and action set never drift
+(both come from `machine-session.ts`). The only difference is the static build
+holds no state across reloads.
+
+End-to-end tests
+----------------
+
+[Playwright](https://playwright.dev/) tests in `e2e/` drive a real browser
+against the **static build** — the same artifact the deploy ships — so they cover
+the render layer and wiring the unit tests can't:
+
+```sh
+npm run test:e2e   # builds dist/, then runs the Playwright suite
+```
+
+Specs are named `*.e2e.ts` (not `*.test.ts`) so the two runners stay separate:
+`npm test` runs vitest over the domain core, `npm run test:e2e` runs Playwright
+over the UI. First run only: `npx playwright install chromium`.

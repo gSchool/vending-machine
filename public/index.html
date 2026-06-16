@@ -481,9 +481,13 @@
 
   <div class="toast" id="toast"></div>
 
+<!-- Transport layer: defines window.VM_API before the render script runs. In the
+     dev server this is the HTTP adapter (public/app.js); the static build swaps
+     in a bundle that drives the domain core in-process. -->
+<script src="app.js"></script>
 <script>
 // Icons are pure presentation and have no place in the domain model, so they
-// live here. Names and prices come from the server catalog (single source of
+// live here. Names and prices come from the catalog (single source of
 // truth: product.ts).
 const PRODUCT_ICONS = { cola: "🥤", chips: "🥔", candy: "🍬" };
 const COINS = {
@@ -599,13 +603,8 @@ function toast(msg, isError) {
 
 async function post(action, body) {
   try {
-    const res = await fetch("/api/" + action, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.error || "error", true); return data; }
+    const data = await window.VM_API.post(action, body || {});
+    if (data.error) { toast(data.error, true); return data; }
     if (data.state) render(data.state);
     return data;
   } catch (e) {
@@ -614,8 +613,7 @@ async function post(action, body) {
 }
 
 async function refresh() {
-  const res = await fetch("/api/state");
-  render(await res.json());
+  render(await window.VM_API.state());
 }
 
 // --- Operator wiring --------------------------------------------------------

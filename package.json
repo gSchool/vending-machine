@@ -7,9 +7,14 @@
   "type": "module",
   "scripts": {
     "test": "vitest",
-    "start": "node --experimental-transform-types --import ./src/ts-resolve.mts src/server.ts"
+    "start": "node --experimental-transform-types --import ./src/ts-resolve.mts src/server.ts",
+    "build:static": "node scripts/build-static.mjs",
+    "serve:static": "node scripts/serve-static.mjs",
+    "test:e2e": "npm run build:static && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "esbuild": "^0.28.1",
     "fast-check": "^4.8.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
